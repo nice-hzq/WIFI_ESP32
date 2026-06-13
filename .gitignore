@@ -9,3 +9,6 @@ python/temp/
 python/venv/
 python/.idea/
 python/Data/temp/
+build/
+dist/
+*.spec.bak
