@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(/d/project/ESP_32/WIFI_ESP32/python/venv/Scripts/pip.exe list *)",
+      "Bash(/d/project/ESP_32/WIFI_ESP32/python/venv/Scripts/python.exe -c \"import serial; print\\('pyserial OK'\\)\")"
+    ]
+  }
+}

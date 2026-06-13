@@ -1,0 +1,94 @@
+{
+    "_说明": "步态分析算法静态配置文件。运行时会通过 core/config.py 的 load_config() 加载。",
+
+    "fs": 100,
+    "tempDir": "./temp",
+    "originalDir": "./Data",
+    "curveDir": "./curveDir",
+    "coordinateType": 1,
+    "WORK_MODE": "lower_body",
+    "USE_MAG": true,
+
+    "calibration": {
+        "faces": ["+Z", "-Z", "+Y", "-Y", "+X", "-X"],
+        "frames_per_face": 2000,
+        "valid_range_ratio": [0.4, 0.8],
+        "tpose_target_samples": 1000,
+        "tpose_use_last_n": 500,
+        "min_frames_per_face": 20,
+        "gyro_bias_max_dps": 8.0,
+        "gyro_std_max_dps": 1.5,
+        "acc_std_max_g": 0.08,
+        "face_axis_main_min_g": 0.75,
+        "face_axis_main_max_g": 1.25,
+        "face_axis_cross_max_g": 0.30,
+        "scale_min_g": 0.60,
+        "scale_max_g": 1.40
+    },
+
+    "install_pose_deg": {
+        "S1":  [0.0,   0.0,   0.0],
+        "T12": [0.0,   0.0,   0.0],
+        "T1":  [0.0,   0.0,   0.0],
+        "H":   [0.0,   0.0,   0.0],
+        "L1":  [90.0, 90.0,  0.0],
+        "L2":  [90.0, 90.0,  0.0],
+        "L3":  [90.0, 90.0,  0.0],
+        "R1":  [90.0, -90.0, 0.0],
+        "R2":  [90.0, -90.0, 0.0],
+        "R3":  [90.0, -90.0, 0.0],
+        "R4":  [0.0,  180.0, 0.0],
+        "R5":  [0.0,  180.0, 0.0],
+        "R6":  [0.0,  180.0, 0.0],
+        "L4": [0.0, 180.0, 0.0],
+        "L5": [0.0, 180.0, 0.0],
+        "L6": [0.0, 180.0, 0.0]
+    },
+
+    "mount_aliases": ["S1", "L4", "L5", "L6", "R4", "R5", "R6"],
+
+    "sensor_aliases": {
+        "upper": ["H", "T1", "T12", "L1", "L2", "L3", "R1", "R2", "R3"],
+        "lower": ["S1", "L4", "L5", "L6", "R4", "R5", "R6"]
+    },
+
+    "test_sensor": "H",
+
+    "gait_pipeline": {
+        "window_size": 5,
+        "gyro_unit": "deg",
+        "use_mag": true,
+        "turn_detection": {
+            "angle_win_s": 1.0,
+            "angle_thr_on": 35.0,
+            "angle_thr_off": 20.0,
+            "yawrate_on": 35.0,
+            "yawrate_off": 20.0,
+            "min_turn_dur_s": 0.30,
+            "min_total_angle_deg": 40.0,
+            "off_hold_s": 0.15,
+            "bridge_gap_s": 0.40,
+            "med_win_s": 0.12,
+            "lp_cut_hz": 2.5
+        },
+        "turn_step": {
+            "axis": "norm",
+            "hp_cut": 0.7,
+            "lp_cut": 6.0,
+            "smooth_win_s": 0.08,
+            "min_step_dist_s": 0.35,
+            "k_height": 1.2,
+            "k_prom": 1.5
+        },
+        "feet_input_unit": "deg"
+    },
+
+    "filter": {
+        "acc_lp_hz": 15.0,
+        "acc_hp_hz": null,
+        "acc_order": 4,
+        "acc_median_win": null,
+        "acc_detrend_linear": false,
+        "acc_zero_mean": false
+    }
+}

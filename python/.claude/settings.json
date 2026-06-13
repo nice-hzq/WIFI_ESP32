@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(d:/sunnyou_event/Sunny_paper/python/venv/Scripts/python.exe -c \"import numpy; print\\('numpy ok'\\)\")",
+      "Bash(d:/sunnyou_event/Sunny_paper/python/.venv/Scripts/python.exe -c \"import numpy; print\\('numpy ok'\\)\")",
+      "Bash(d:/sunnyou_event/Sunny_paper/python/venv/Scripts/python.exe test_gait_report.py)"
+    ]
+  }
+}

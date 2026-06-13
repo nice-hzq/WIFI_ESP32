@@ -1,0 +1,295 @@
+============================================================
+步态分析报告测试
+  tempDir     = D:\sunnyou_event\Sunny全身多关节项目\Rom.Algorithm\python\Data\temp
+  originalDir = D:\sunnyou_event\Sunny全身多关节项目\Rom.Algorithm\python\Data\walk_12
+  curveDir    = D:\sunnyou_event\Sunny全身多关节项目\Rom.Algorithm\python\output
+  WORK_MODE   = lower_body
+============================================================
+[CALIB-LOAD] 读取六面加速度校准：H ← D:\sunnyou_event\Sunny全身多关节项目\Rom.Algorithm\python\Data\temp\H_acc_6face.json
+[CALIB-LOAD] 读取陀螺零偏：H ← D:\sunnyou_event\Sunny全身多关节项目\Rom.Algorithm\python\Data\temp\H_gyro_bias.json
+[CALIB-LOAD] 读取磁力计椭球校准：H ← D:\sunnyou_event\Sunny全身多关节项目\Rom.Algorithm\python\Data\temp\H_mag_calib.json
+[CALIB-LOAD] 读取六面加速度校准：L1 ← D:\sunnyou_event\Sunny全身多关节项目\Rom.Algorithm\python\Data\temp\L1_acc_6face.json
+[CALIB-LOAD] 读取陀螺零偏：L1 ← D:\sunnyou_event\Sunny全身多关节项目\Rom.Algorithm\python\Data\temp\L1_gyro_bias.json
+[CALIB-LOAD] 读取磁力计椭球校准：L1 ← D:\sunnyou_event\Sunny全身多关节项目\Rom.Algorithm\python\Data\temp\L1_mag_calib.json
+[CALIB-LOAD] 读取六面加速度校准：L2 ← D:\sunnyou_event\Sunny全身多关节项目\Rom.Algorithm\python\Data\temp\L2_acc_6face.json
+[CALIB-LOAD] 读取陀螺零偏：L2 ← D:\sunnyou_event\Sunny全身多关节项目\Rom.Algorithm\python\Data\temp\L2_gyro_bias.json
+[CALIB-LOAD] 读取磁力计椭球校准：L2 ← D:\sunnyou_event\Sunny全身多关节项目\Rom.Algorithm\python\Data\temp\L2_mag_calib.json
+[CALIB-LOAD] 读取六面加速度校准：L3 ← D:\sunnyou_event\Sunny全身多关节项目\Rom.Algorithm\python\Data\temp\L3_acc_6face.json
+[CALIB-LOAD] 读取陀螺零偏：L3 ← D:\sunnyou_event\Sunny全身多关节项目\Rom.Algorithm\python\Data\temp\L3_gyro_bias.json
+[CALIB-LOAD] 读取磁力计椭球校准：L3 ← D:\sunnyou_event\Sunny全身多关节项目\Rom.Algorithm\python\Data\temp\L3_mag_calib.json
+[CALIB-LOAD] 读取六面加速度校准：L4 ← D:\sunnyou_event\Sunny全身多关节项目\Rom.Algorithm\python\Data\temp\L4_acc_6face.json
+[CALIB-LOAD] 读取陀螺零偏：L4 ← D:\sunnyou_event\Sunny全身多关节项目\Rom.Algorithm\python\Data\temp\L4_gyro_bias.json
+[CALIB-LOAD] 读取磁力计椭球校准：L4 ← D:\sunnyou_event\Sunny全身多关节项目\Rom.Algorithm\python\Data\temp\L4_mag_calib.json
+[CALIB-LOAD] 读取六面加速度校准：L5 ← D:\sunnyou_event\Sunny全身多关节项目\Rom.Algorithm\python\Data\temp\L5_acc_6face.json
+[CALIB-LOAD] 读取陀螺零偏：L5 ← D:\sunnyou_event\Sunny全身多关节项目\Rom.Algorithm\python\Data\temp\L5_gyro_bias.json
+[CALIB-LOAD] 读取磁力计椭球校准：L5 ← D:\sunnyou_event\Sunny全身多关节项目\Rom.Algorithm\python\Data\temp\L5_mag_calib.json
+[CALIB-LOAD] 读取六面加速度校准：L6 ← D:\sunnyou_event\Sunny全身多关节项目\Rom.Algorithm\python\Data\temp\L6_acc_6face.json
+[CALIB-LOAD] 读取陀螺零偏：L6 ← D:\sunnyou_event\Sunny全身多关节项目\Rom.Algorithm\python\Data\temp\L6_gyro_bias.json
+[CALIB-LOAD] 读取磁力计椭球校准：L6 ← D:\sunnyou_event\Sunny全身多关节项目\Rom.Algorithm\python\Data\temp\L6_mag_calib.json
+[CALIB-LOAD] 读取六面加速度校准：R1 ← D:\sunnyou_event\Sunny全身多关节项目\Rom.Algorithm\python\Data\temp\R1_acc_6face.json
+[CALIB-LOAD] 读取陀螺零偏：R1 ← D:\sunnyou_event\Sunny全身多关节项目\Rom.Algorithm\python\Data\temp\R1_gyro_bias.json
+[CALIB-LOAD] 读取磁力计椭球校准：R1 ← D:\sunnyou_event\Sunny全身多关节项目\Rom.Algorithm\python\Data\temp\R1_mag_calib.json
+[CALIB-LOAD] 读取六面加速度校准：R2 ← D:\sunnyou_event\Sunny全身多关节项目\Rom.Algorithm\python\Data\temp\R2_acc_6face.json
+[CALIB-LOAD] 读取陀螺零偏：R2 ← D:\sunnyou_event\Sunny全身多关节项目\Rom.Algorithm\python\Data\temp\R2_gyro_bias.json
+[CALIB-LOAD] 读取磁力计椭球校准：R2 ← D:\sunnyou_event\Sunny全身多关节项目\Rom.Algorithm\python\Data\temp\R2_mag_calib.json
+[CALIB-LOAD] 读取六面加速度校准：R3 ← D:\sunnyou_event\Sunny全身多关节项目\Rom.Algorithm\python\Data\temp\R3_acc_6face.json
+[CALIB-LOAD] 读取陀螺零偏：R3 ← D:\sunnyou_event\Sunny全身多关节项目\Rom.Algorithm\python\Data\temp\R3_gyro_bias.json
+[CALIB-LOAD] 读取磁力计椭球校准：R3 ← D:\sunnyou_event\Sunny全身多关节项目\Rom.Algorithm\python\Data\temp\R3_mag_calib.json
+[CALIB-LOAD] 读取六面加速度校准：R4 ← D:\sunnyou_event\Sunny全身多关节项目\Rom.Algorithm\python\Data\temp\R4_acc_6face.json
+[CALIB-LOAD] 读取陀螺零偏：R4 ← D:\sunnyou_event\Sunny全身多关节项目\Rom.Algorithm\python\Data\temp\R4_gyro_bias.json
+[CALIB-LOAD] 读取磁力计椭球校准：R4 ← D:\sunnyou_event\Sunny全身多关节项目\Rom.Algorithm\python\Data\temp\R4_mag_calib.json
+[CALIB-LOAD] 读取六面加速度校准：R5 ← D:\sunnyou_event\Sunny全身多关节项目\Rom.Algorithm\python\Data\temp\R5_acc_6face.json
+[CALIB-LOAD] 读取陀螺零偏：R5 ← D:\sunnyou_event\Sunny全身多关节项目\Rom.Algorithm\python\Data\temp\R5_gyro_bias.json
+[CALIB-LOAD] 读取磁力计椭球校准：R5 ← D:\sunnyou_event\Sunny全身多关节项目\Rom.Algorithm\python\Data\temp\R5_mag_calib.json
+[CALIB-LOAD] 读取六面加速度校准：R6 ← D:\sunnyou_event\Sunny全身多关节项目\Rom.Algorithm\python\Data\temp\R6_acc_6face.json
+[CALIB-LOAD] 读取陀螺零偏：R6 ← D:\sunnyou_event\Sunny全身多关节项目\Rom.Algorithm\python\Data\temp\R6_gyro_bias.json
+[CALIB-LOAD] 读取磁力计椭球校准：R6 ← D:\sunnyou_event\Sunny全身多关节项目\Rom.Algorithm\python\Data\temp\R6_mag_calib.json
+[CALIB-LOAD] 读取六面加速度校准：S1 ← D:\sunnyou_event\Sunny全身多关节项目\Rom.Algorithm\python\Data\temp\S1_acc_6face.json
+[CALIB-LOAD] 读取陀螺零偏：S1 ← D:\sunnyou_event\Sunny全身多关节项目\Rom.Algorithm\python\Data\temp\S1_gyro_bias.json
+[CALIB-LOAD] 读取磁力计椭球校准：S1 ← D:\sunnyou_event\Sunny全身多关节项目\Rom.Algorithm\python\Data\temp\S1_mag_calib.json
+[CALIB-LOAD] 读取六面加速度校准：T12 ← D:\sunnyou_event\Sunny全身多关节项目\Rom.Algorithm\python\Data\temp\T12_acc_6face.json
+[CALIB-LOAD] 读取陀螺零偏：T12 ← D:\sunnyou_event\Sunny全身多关节项目\Rom.Algorithm\python\Data\temp\T12_gyro_bias.json
+[CALIB-LOAD] 读取磁力计椭球校准：T12 ← D:\sunnyou_event\Sunny全身多关节项目\Rom.Algorithm\python\Data\temp\T12_mag_calib.json
+[CALIB-LOAD] 读取六面加速度校准：T1 ← D:\sunnyou_event\Sunny全身多关节项目\Rom.Algorithm\python\Data\temp\T1_acc_6face.json
+[CALIB-LOAD] 读取陀螺零偏：T1 ← D:\sunnyou_event\Sunny全身多关节项目\Rom.Algorithm\python\Data\temp\T1_gyro_bias.json
+[CALIB-LOAD] 读取磁力计椭球校准：T1 ← D:\sunnyou_event\Sunny全身多关节项目\Rom.Algorithm\python\Data\temp\T1_mag_calib.json
+[CALIB-LOAD] 校准参数加载完成：16 个节点；目录: D:\sunnyou_event\Sunny全身多关节项目\Rom.Algorithm\python\Data\temp
+[CALIB-LOAD] gyro=16, acc_bias_g=16, acc_scale_g=16
+
+校准参数加载: 16 个节点
+  gyro_bias: ['H', 'L1', 'L2', 'L3', 'L4', 'L5', 'L6', 'R1', 'R2', 'R3', 'R4', 'R5', 'R6', 'S1', 'T12', 'T1']
+  acc_bias:  ['H', 'L1', 'L2', 'L3', 'L4', 'L5', 'L6', 'R1', 'R2', 'R3', 'R4', 'R5', 'R6', 'S1', 'T12', 'T1']
+
+加载传感器原始数据...
+[CALIB-LOAD] 读取六面加速度校准：H ← D:\sunnyou_event\Sunny全身多关节项目\Rom.Algorithm\python\Data\temp\H_acc_6face.json
+[CALIB-LOAD] 读取陀螺零偏：H ← D:\sunnyou_event\Sunny全身多关节项目\Rom.Algorithm\python\Data\temp\H_gyro_bias.json
+[CALIB-LOAD] 读取六面加速度校准：L1 ← D:\sunnyou_event\Sunny全身多关节项目\Rom.Algorithm\python\Data\temp\L1_acc_6face.json
+[CALIB-LOAD] 读取陀螺零偏：L1 ← D:\sunnyou_event\Sunny全身多关节项目\Rom.Algorithm\python\Data\temp\L1_gyro_bias.json
+[CALIB-LOAD] 读取六面加速度校准：L2 ← D:\sunnyou_event\Sunny全身多关节项目\Rom.Algorithm\python\Data\temp\L2_acc_6face.json
+[CALIB-LOAD] 读取陀螺零偏：L2 ← D:\sunnyou_event\Sunny全身多关节项目\Rom.Algorithm\python\Data\temp\L2_gyro_bias.json
+[CALIB-LOAD] 读取六面加速度校准：L3 ← D:\sunnyou_event\Sunny全身多关节项目\Rom.Algorithm\python\Data\temp\L3_acc_6face.json
+[CALIB-LOAD] 读取陀螺零偏：L3 ← D:\sunnyou_event\Sunny全身多关节项目\Rom.Algorithm\python\Data\temp\L3_gyro_bias.json
+[CALIB-LOAD] 读取六面加速度校准：L4 ← D:\sunnyou_event\Sunny全身多关节项目\Rom.Algorithm\python\Data\temp\L4_acc_6face.json
+[CALIB-LOAD] 读取陀螺零偏：L4 ← D:\sunnyou_event\Sunny全身多关节项目\Rom.Algorithm\python\Data\temp\L4_gyro_bias.json
+[CALIB-LOAD] 读取六面加速度校准：L5 ← D:\sunnyou_event\Sunny全身多关节项目\Rom.Algorithm\python\Data\temp\L5_acc_6face.json
+Traceback (most recent call last):
+  File "D:\sunnyou_event\Sunny全身多关节项目\Rom.Algorithm\python\test_gait_report.py", line 78, in <module>
+    stats_df, metrics_shoulders = Hip_Knee_ankle_shoulders()
+  File "D:\sunnyou_event\Sunny全身多关节项目\Rom.Algorithm\python\gait\gait_pipeline.py", line 233, in Hip_Knee_ankle_shoulders
+    save_all_joint_angles_to_excel(results,
+  File "D:\sunnyou_event\Sunny全身多关节项目\Rom.Algorithm\python\joint_analysis\lower_limb.py", line 736, in save_all_joint_angles_to_excel
+    print(f"\u2705 All joint angles saved to: {os.path.abspath(filepath)}")
+UnicodeEncodeError: 'gbk' codec can't encode character '\u2705' in position 0: illegal multibyte sequence
+[CALIB-LOAD] 读取陀螺零偏：L5 ← D:\sunnyou_event\Sunny全身多关节项目\Rom.Algorithm\python\Data\temp\L5_gyro_bias.json
+[CALIB-LOAD] 读取六面加速度校准：L6 ← D:\sunnyou_event\Sunny全身多关节项目\Rom.Algorithm\python\Data\temp\L6_acc_6face.json
+[CALIB-LOAD] 读取陀螺零偏：L6 ← D:\sunnyou_event\Sunny全身多关节项目\Rom.Algorithm\python\Data\temp\L6_gyro_bias.json
+[CALIB-LOAD] 读取六面加速度校准：R1 ← D:\sunnyou_event\Sunny全身多关节项目\Rom.Algorithm\python\Data\temp\R1_acc_6face.json
+[CALIB-LOAD] 读取陀螺零偏：R1 ← D:\sunnyou_event\Sunny全身多关节项目\Rom.Algorithm\python\Data\temp\R1_gyro_bias.json
+[CALIB-LOAD] 读取六面加速度校准：R2 ← D:\sunnyou_event\Sunny全身多关节项目\Rom.Algorithm\python\Data\temp\R2_acc_6face.json
+[CALIB-LOAD] 读取陀螺零偏：R2 ← D:\sunnyou_event\Sunny全身多关节项目\Rom.Algorithm\python\Data\temp\R2_gyro_bias.json
+[CALIB-LOAD] 读取六面加速度校准：R3 ← D:\sunnyou_event\Sunny全身多关节项目\Rom.Algorithm\python\Data\temp\R3_acc_6face.json
+[CALIB-LOAD] 读取陀螺零偏：R3 ← D:\sunnyou_event\Sunny全身多关节项目\Rom.Algorithm\python\Data\temp\R3_gyro_bias.json
+[CALIB-LOAD] 读取六面加速度校准：R4 ← D:\sunnyou_event\Sunny全身多关节项目\Rom.Algorithm\python\Data\temp\R4_acc_6face.json
+[CALIB-LOAD] 读取陀螺零偏：R4 ← D:\sunnyou_event\Sunny全身多关节项目\Rom.Algorithm\python\Data\temp\R4_gyro_bias.json
+[CALIB-LOAD] 读取六面加速度校准：R5 ← D:\sunnyou_event\Sunny全身多关节项目\Rom.Algorithm\python\Data\temp\R5_acc_6face.json
+[CALIB-LOAD] 读取陀螺零偏：R5 ← D:\sunnyou_event\Sunny全身多关节项目\Rom.Algorithm\python\Data\temp\R5_gyro_bias.json
+[CALIB-LOAD] 读取六面加速度校准：R6 ← D:\sunnyou_event\Sunny全身多关节项目\Rom.Algorithm\python\Data\temp\R6_acc_6face.json
+[CALIB-LOAD] 读取陀螺零偏：R6 ← D:\sunnyou_event\Sunny全身多关节项目\Rom.Algorithm\python\Data\temp\R6_gyro_bias.json
+[CALIB-LOAD] 读取六面加速度校准：S1 ← D:\sunnyou_event\Sunny全身多关节项目\Rom.Algorithm\python\Data\temp\S1_acc_6face.json
+[CALIB-LOAD] 读取陀螺零偏：S1 ← D:\sunnyou_event\Sunny全身多关节项目\Rom.Algorithm\python\Data\temp\S1_gyro_bias.json
+[CALIB-LOAD] 读取六面加速度校准：T12 ← D:\sunnyou_event\Sunny全身多关节项目\Rom.Algorithm\python\Data\temp\T12_acc_6face.json
+[CALIB-LOAD] 读取陀螺零偏：T12 ← D:\sunnyou_event\Sunny全身多关节项目\Rom.Algorithm\python\Data\temp\T12_gyro_bias.json
+[CALIB-LOAD] 读取六面加速度校准：T1 ← D:\sunnyou_event\Sunny全身多关节项目\Rom.Algorithm\python\Data\temp\T1_acc_6face.json
+[CALIB-LOAD] 读取陀螺零偏：T1 ← D:\sunnyou_event\Sunny全身多关节项目\Rom.Algorithm\python\Data\temp\T1_gyro_bias.json
+[CALIB-LOAD] 校准参数加载完成：16 个节点；目录: D:\sunnyou_event\Sunny全身多关节项目\Rom.Algorithm\python\Data\temp
+[CALIB-LOAD] gyro=16, acc_bias_g=16, acc_scale_g=16
+  数据加载成功:
+    S1: (1260, 9)
+    L4: (1260, 9)
+    L5: (1260, 9)
+    L6: (1260, 9)
+    R4: (1260, 9)
+    R5: (1260, 9)
+    R6: (1260, 9)
+
+运行步态分析管线...
+[CALIB-LOAD] 读取六面加速度校准：H ← D:\sunnyou_event\Sunny全身多关节项目\Rom.Algorithm\python\Data\temp\H_acc_6face.json
+[CALIB-LOAD] 读取陀螺零偏：H ← D:\sunnyou_event\Sunny全身多关节项目\Rom.Algorithm\python\Data\temp\H_gyro_bias.json
+[CALIB-LOAD] 读取六面加速度校准：L1 ← D:\sunnyou_event\Sunny全身多关节项目\Rom.Algorithm\python\Data\temp\L1_acc_6face.json
+[CALIB-LOAD] 读取陀螺零偏：L1 ← D:\sunnyou_event\Sunny全身多关节项目\Rom.Algorithm\python\Data\temp\L1_gyro_bias.json
+[CALIB-LOAD] 读取六面加速度校准：L2 ← D:\sunnyou_event\Sunny全身多关节项目\Rom.Algorithm\python\Data\temp\L2_acc_6face.json
+[CALIB-LOAD] 读取陀螺零偏：L2 ← D:\sunnyou_event\Sunny全身多关节项目\Rom.Algorithm\python\Data\temp\L2_gyro_bias.json
+[CALIB-LOAD] 读取六面加速度校准：L3 ← D:\sunnyou_event\Sunny全身多关节项目\Rom.Algorithm\python\Data\temp\L3_acc_6face.json
+[CALIB-LOAD] 读取陀螺零偏：L3 ← D:\sunnyou_event\Sunny全身多关节项目\Rom.Algorithm\python\Data\temp\L3_gyro_bias.json
+[CALIB-LOAD] 读取六面加速度校准：L4 ← D:\sunnyou_event\Sunny全身多关节项目\Rom.Algorithm\python\Data\temp\L4_acc_6face.json
+[CALIB-LOAD] 读取陀螺零偏：L4 ← D:\sunnyou_event\Sunny全身多关节项目\Rom.Algorithm\python\Data\temp\L4_gyro_bias.json
+[CALIB-LOAD] 读取六面加速度校准：L5 ← D:\sunnyou_event\Sunny全身多关节项目\Rom.Algorithm\python\Data\temp\L5_acc_6face.json
+[CALIB-LOAD] 读取陀螺零偏：L5 ← D:\sunnyou_event\Sunny全身多关节项目\Rom.Algorithm\python\Data\temp\L5_gyro_bias.json
+[CALIB-LOAD] 读取六面加速度校准：L6 ← D:\sunnyou_event\Sunny全身多关节项目\Rom.Algorithm\python\Data\temp\L6_acc_6face.json
+[CALIB-LOAD] 读取陀螺零偏：L6 ← D:\sunnyou_event\Sunny全身多关节项目\Rom.Algorithm\python\Data\temp\L6_gyro_bias.json
+[CALIB-LOAD] 读取六面加速度校准：R1 ← D:\sunnyou_event\Sunny全身多关节项目\Rom.Algorithm\python\Data\temp\R1_acc_6face.json
+[CALIB-LOAD] 读取陀螺零偏：R1 ← D:\sunnyou_event\Sunny全身多关节项目\Rom.Algorithm\python\Data\temp\R1_gyro_bias.json
+[CALIB-LOAD] 读取六面加速度校准：R2 ← D:\sunnyou_event\Sunny全身多关节项目\Rom.Algorithm\python\Data\temp\R2_acc_6face.json
+[CALIB-LOAD] 读取陀螺零偏：R2 ← D:\sunnyou_event\Sunny全身多关节项目\Rom.Algorithm\python\Data\temp\R2_gyro_bias.json
+[CALIB-LOAD] 读取六面加速度校准：R3 ← D:\sunnyou_event\Sunny全身多关节项目\Rom.Algorithm\python\Data\temp\R3_acc_6face.json
+[CALIB-LOAD] 读取陀螺零偏：R3 ← D:\sunnyou_event\Sunny全身多关节项目\Rom.Algorithm\python\Data\temp\R3_gyro_bias.json
+[CALIB-LOAD] 读取六面加速度校准：R4 ← D:\sunnyou_event\Sunny全身多关节项目\Rom.Algorithm\python\Data\temp\R4_acc_6face.json
+[CALIB-LOAD] 读取陀螺零偏：R4 ← D:\sunnyou_event\Sunny全身多关节项目\Rom.Algorithm\python\Data\temp\R4_gyro_bias.json
+[CALIB-LOAD] 读取六面加速度校准：R5 ← D:\sunnyou_event\Sunny全身多关节项目\Rom.Algorithm\python\Data\temp\R5_acc_6face.json
+[CALIB-LOAD] 读取陀螺零偏：R5 ← D:\sunnyou_event\Sunny全身多关节项目\Rom.Algorithm\python\Data\temp\R5_gyro_bias.json
+[CALIB-LOAD] 读取六面加速度校准：R6 ← D:\sunnyou_event\Sunny全身多关节项目\Rom.Algorithm\python\Data\temp\R6_acc_6face.json
+[CALIB-LOAD] 读取陀螺零偏：R6 ← D:\sunnyou_event\Sunny全身多关节项目\Rom.Algorithm\python\Data\temp\R6_gyro_bias.json
+[CALIB-LOAD] 读取六面加速度校准：S1 ← D:\sunnyou_event\Sunny全身多关节项目\Rom.Algorithm\python\Data\temp\S1_acc_6face.json
+[CALIB-LOAD] 读取陀螺零偏：S1 ← D:\sunnyou_event\Sunny全身多关节项目\Rom.Algorithm\python\Data\temp\S1_gyro_bias.json
+[CALIB-LOAD] 读取六面加速度校准：T12 ← D:\sunnyou_event\Sunny全身多关节项目\Rom.Algorithm\python\Data\temp\T12_acc_6face.json
+[CALIB-LOAD] 读取陀螺零偏：T12 ← D:\sunnyou_event\Sunny全身多关节项目\Rom.Algorithm\python\Data\temp\T12_gyro_bias.json
+[CALIB-LOAD] 读取六面加速度校准：T1 ← D:\sunnyou_event\Sunny全身多关节项目\Rom.Algorithm\python\Data\temp\T1_acc_6face.json
+[CALIB-LOAD] 读取陀螺零偏：T1 ← D:\sunnyou_event\Sunny全身多关节项目\Rom.Algorithm\python\Data\temp\T1_gyro_bias.json
+[CALIB-LOAD] 校准参数加载完成：16 个节点；目录: D:\sunnyou_event\Sunny全身多关节项目\Rom.Algorithm\python\Data\temp
+[CALIB-LOAD] gyro=16, acc_bias_g=16, acc_scale_g=16
+  步态分析完成
+
+============================================================
+输出结果 (截取前 2000 字符):
+============================================================
+{
+  "version": "1.0",
+  "timestamp": 1778482145990,
+  "sessionDuration": 12.6,
+  "basicParameters": {
+    "turnSteps": 0,
+    "turnDuration": 0.0,
+    "stepWidth": 0.28188874013421905,
+    "cadence": {
+      "left": 98.09264305177112,
+      "right": 82.41758241758242
+    },
+    "gaitCycle": 1.331,
+    "walkingSpeed": {
+      "left": 0.0001941929956383369,
+      "right": 1.6182719470429137
+    },
+    "walkingDistance": 2.935100432993509,
+    "totalSteps": 12,
+    "strideTime": {
+      "left": 1.3319999999999999,
+      "right": 1.33
+    }
+  },
+  "stepParameters": {
+    "stepLength": {
+      "left": 0.00012371313189924084,
+      "right": 0.9782430978659369
+    },
+    "stepLengthDeviation": 0.9781193847340377,
+    "strideLength": 0.53704449137875,
+    "stepTime": {
+      "left": 0.6116666666666667,
+      "right": 0.728
+    },
+    "validSteps": {
+      "left": 6,
+      "right": 6
+    },
+    "footLiftHeight": {
+      "left": 1.2551652994015806e-05,
+      "right": 0.12286988732496895
+    }
+  },
+  "phaseParameters": {
+    "doubleSupportPhase": 20.819277740528896,
+    "supportPhase": {
+      "left": 61.70714361551506,
+      "right": 61.292938151235965
+    },
+    "swingPhase": {
+      "left": 38.29285638448495,
+      "right": 38.707061848764035
+    },
+    "initialContact": {
+      "left": 0.0,
+      "right": 0.0
+    },
+    "toeOff": {
+      "left": 0.0,
+      "right": 0.0
+    }
+  },
+  "trunkParameters": {
+    "lateralBending": {
+      "left": 0.0,
+      "right": 0.0
+    },
+    "anteriorPosteriorTilt": {
+      "left": 0.0,
+      "right": 0.0
+    },
+    "rotation": {
+      "left": 0.0,
+      "right": 0.0
+    },
+    "trunkPelvisAngle": 0.0
+  },
+  "armParameters": {
+    "swingVelocityForward": {
+      "left": 0.0,
+      "right": 0.0
+    },
+    "swingVelocityBackward": {
+      "left": 0.0,
+      "right": 0.0
+    },
+    "rangeOfMotion": {
+      "left": 0.0,
+      "right": 0.0
+    },
+    "armHipAngle": 0.0
+  },
+  "impactParameters": {
+    "shankImpact": {
+      "left": 0.0,
+      "r
+
+... (总长 2629 字符)
+
+============================================================
+计算关节角度...
+[CALIB-LOAD] 读取六面加速度校准：H ← D:\sunnyou_event\Sunny全身多关节项目\Rom.Algorithm\python\Data\temp\H_acc_6face.json
+[CALIB-LOAD] 读取陀螺零偏：H ← D:\sunnyou_event\Sunny全身多关节项目\Rom.Algorithm\python\Data\temp\H_gyro_bias.json
+[CALIB-LOAD] 读取六面加速度校准：L1 ← D:\sunnyou_event\Sunny全身多关节项目\Rom.Algorithm\python\Data\temp\L1_acc_6face.json
+[CALIB-LOAD] 读取陀螺零偏：L1 ← D:\sunnyou_event\Sunny全身多关节项目\Rom.Algorithm\python\Data\temp\L1_gyro_bias.json
+[CALIB-LOAD] 读取六面加速度校准：L2 ← D:\sunnyou_event\Sunny全身多关节项目\Rom.Algorithm\python\Data\temp\L2_acc_6face.json
+[CALIB-LOAD] 读取陀螺零偏：L2 ← D:\sunnyou_event\Sunny全身多关节项目\Rom.Algorithm\python\Data\temp\L2_gyro_bias.json
+[CALIB-LOAD] 读取六面加速度校准：L3 ← D:\sunnyou_event\Sunny全身多关节项目\Rom.Algorithm\python\Data\temp\L3_acc_6face.json
+[CALIB-LOAD] 读取陀螺零偏：L3 ← D:\sunnyou_event\Sunny全身多关节项目\Rom.Algorithm\python\Data\temp\L3_gyro_bias.json
+[CALIB-LOAD] 读取六面加速度校准：L4 ← D:\sunnyou_event\Sunny全身多关节项目\Rom.Algorithm\python\Data\temp\L4_acc_6face.json
+[CALIB-LOAD] 读取陀螺零偏：L4 ← D:\sunnyou_event\Sunny全身多关节项目\Rom.Algorithm\python\Data\temp\L4_gyro_bias.json
+[CALIB-LOAD] 读取六面加速度校准：L5 ← D:\sunnyou_event\Sunny全身多关节项目\Rom.Algorithm\python\Data\temp\L5_acc_6face.json
+[CALIB-LOAD] 读取陀螺零偏：L5 ← D:\sunnyou_event\Sunny全身多关节项目\Rom.Algorithm\python\Data\temp\L5_gyro_bias.json
+[CALIB-LOAD] 读取六面加速度校准：L6 ← D:\sunnyou_event\Sunny全身多关节项目\Rom.Algorithm\python\Data\temp\L6_acc_6face.json
+[CALIB-LOAD] 读取陀螺零偏：L6 ← D:\sunnyou_event\Sunny全身多关节项目\Rom.Algorithm\python\Data\temp\L6_gyro_bias.json
+[CALIB-LOAD] 读取六面加速度校准：R1 ← D:\sunnyou_event\Sunny全身多关节项目\Rom.Algorithm\python\Data\temp\R1_acc_6face.json
+[CALIB-LOAD] 读取陀螺零偏：R1 ← D:\sunnyou_event\Sunny全身多关节项目\Rom.Algorithm\python\Data\temp\R1_gyro_bias.json
+[CALIB-LOAD] 读取六面加速度校准：R2 ← D:\sunnyou_event\Sunny全身多关节项目\Rom.Algorithm\python\Data\temp\R2_acc_6face.json
+[CALIB-LOAD] 读取陀螺零偏：R2 ← D:\sunnyou_event\Sunny全身多关节项目\Rom.Algorithm\python\Data\temp\R2_gyro_bias.json
+[CALIB-LOAD] 读取六面加速度校准：R3 ← D:\sunnyou_event\Sunny全身多关节项目\Rom.Algorithm\python\Data\temp\R3_acc_6face.json
+[CALIB-LOAD] 读取陀螺零偏：R3 ← D:\sunnyou_event\Sunny全身多关节项目\Rom.Algorithm\python\Data\temp\R3_gyro_bias.json
+[CALIB-LOAD] 读取六面加速度校准：R4 ← D:\sunnyou_event\Sunny全身多关节项目\Rom.Algorithm\python\Data\temp\R4_acc_6face.json
+[CALIB-LOAD] 读取陀螺零偏：R4 ← D:\sunnyou_event\Sunny全身多关节项目\Rom.Algorithm\python\Data\temp\R4_gyro_bias.json
+[CALIB-LOAD] 读取六面加速度校准：R5 ← D:\sunnyou_event\Sunny全身多关节项目\Rom.Algorithm\python\Data\temp\R5_acc_6face.json
+[CALIB-LOAD] 读取陀螺零偏：R5 ← D:\sunnyou_event\Sunny全身多关节项目\Rom.Algorithm\python\Data\temp\R5_gyro_bias.json
+[CALIB-LOAD] 读取六面加速度校准：R6 ← D:\sunnyou_event\Sunny全身多关节项目\Rom.Algorithm\python\Data\temp\R6_acc_6face.json
+[CALIB-LOAD] 读取陀螺零偏：R6 ← D:\sunnyou_event\Sunny全身多关节项目\Rom.Algorithm\python\Data\temp\R6_gyro_bias.json
+[CALIB-LOAD] 读取六面加速度校准：S1 ← D:\sunnyou_event\Sunny全身多关节项目\Rom.Algorithm\python\Data\temp\S1_acc_6face.json
+[CALIB-LOAD] 读取陀螺零偏：S1 ← D:\sunnyou_event\Sunny全身多关节项目\Rom.Algorithm\python\Data\temp\S1_gyro_bias.json
+[CALIB-LOAD] 读取六面加速度校准：T12 ← D:\sunnyou_event\Sunny全身多关节项目\Rom.Algorithm\python\Data\temp\T12_acc_6face.json
+[CALIB-LOAD] 读取陀螺零偏：T12 ← D:\sunnyou_event\Sunny全身多关节项目\Rom.Algorithm\python\Data\temp\T12_gyro_bias.json
+[CALIB-LOAD] 读取六面加速度校准：T1 ← D:\sunnyou_event\Sunny全身多关节项目\Rom.Algorithm\python\Data\temp\T1_acc_6face.json
+[CALIB-LOAD] 读取陀螺零偏：T1 ← D:\sunnyou_event\Sunny全身多关节项目\Rom.Algorithm\python\Data\temp\T1_gyro_bias.json
+[CALIB-LOAD] 校准参数加载完成：16 个节点；目录: D:\sunnyou_event\Sunny全身多关节项目\Rom.Algorithm\python\Data\temp
+[CALIB-LOAD] gyro=16, acc_bias_g=16, acc_scale_g=16
+  关节角度计算失败: 'gbk' codec can't encode character '\u2705' in position 0: illegal multibyte sequence
+
+============================================================
+测试完成。输出文件在 output/ 目录
+============================================================

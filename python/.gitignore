@@ -1,0 +1,18 @@
+# Ignore Python virtual environments
+venv/
+
+# Ignore raw data directory
+Data/
+
+# Ignore temp calibration files
+temp/
+
+# Common Python artifacts
+__pycache__/
+*.py[cod]
+*.$py.class
+
+# Distribution / packaging
+build/
+dist/
+*.egg-info/
