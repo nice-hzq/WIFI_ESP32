@@ -22,6 +22,8 @@ JOINT_DEFS = {
         "name_en": "Left Knee",
         "proximal_default": "L4",   # 大腿
         "distal_default": "L5",     # 小腿
+        "prox_label": "大腿 (Thigh)",
+        "dist_label": "小腿 (Shank)",
         "flexion_axis": 0,          # roll = 屈伸
     },
     "right_knee": {
@@ -29,6 +31,8 @@ JOINT_DEFS = {
         "name_en": "Right Knee",
         "proximal_default": "R4",
         "distal_default": "R5",
+        "prox_label": "大腿 (Thigh)",
+        "dist_label": "小腿 (Shank)",
         "flexion_axis": 0,
     },
     "left_ankle": {
@@ -36,6 +40,8 @@ JOINT_DEFS = {
         "name_en": "Left Ankle",
         "proximal_default": "L5",
         "distal_default": "L6",
+        "prox_label": "小腿 (Shank)",
+        "dist_label": "脚掌 (Foot)",
         "flexion_axis": 0,
     },
     "right_ankle": {
@@ -43,6 +49,8 @@ JOINT_DEFS = {
         "name_en": "Right Ankle",
         "proximal_default": "R5",
         "distal_default": "R6",
+        "prox_label": "小腿 (Shank)",
+        "dist_label": "脚掌 (Foot)",
         "flexion_axis": 0,
     },
     "left_hip": {
@@ -50,6 +58,8 @@ JOINT_DEFS = {
         "name_en": "Left Hip",
         "proximal_default": "S1",
         "distal_default": "L4",
+        "prox_label": "骨盆 (Pelvis)",
+        "dist_label": "大腿 (Thigh)",
         "flexion_axis": 0,
     },
     "right_hip": {
@@ -57,6 +67,8 @@ JOINT_DEFS = {
         "name_en": "Right Hip",
         "proximal_default": "S1",
         "distal_default": "R4",
+        "prox_label": "骨盆 (Pelvis)",
+        "dist_label": "大腿 (Thigh)",
         "flexion_axis": 0,
     },
 }

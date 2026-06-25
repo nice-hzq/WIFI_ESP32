@@ -125,7 +125,9 @@ class GaitAnalysisApp:
         self._joint_history_abduction = []
         self._joint_history_rotation = []
 
-        # ── Joint sensor alias display ──
+        # ── Joint sensor segment labels ──
+        self._joint_prox_label_var = tk.StringVar(value="大腿 (Thigh)")
+        self._joint_dist_label_var = tk.StringVar(value="小腿 (Shank)")
         self._joint_prox_var = tk.StringVar(value="L4")
         self._joint_dist_var = tk.StringVar(value="L5")
 
@@ -438,6 +440,8 @@ class GaitAnalysisApp:
         def _on_joint_change(*args):
             key = self.joint_var.get()
             info = JOINT_OPTIONS.get(key, {})
+            self._joint_prox_label_var.set(f"{info.get('prox_label', '?')}")
+            self._joint_dist_label_var.set(f"{info.get('dist_label', '?')}")
             self._joint_prox_var.set(f"{info.get('proximal', '?')}")
             self._joint_dist_var.set(f"{info.get('distal', '?')}")
             # 重置设备 ID 显示并尝试从已保存映射中解析
@@ -446,11 +450,11 @@ class GaitAnalysisApp:
             self._update_joint_device_display()
         self.joint_var.trace_add("write", _on_joint_change)
 
-        # ── Sensor binding display (alias + device ID) ──
-        # Proximal row
+        # ── Sensor binding display (segment label + alias + device ID) ──
+        # Upper segment row
         prox_row = tk.Frame(content, bg=CARD_BG)
         prox_row.pack(fill="x", padx=12, pady=(2, 2))
-        tk.Label(prox_row, text="近端 (Proximal):", font=FONT_SMALL, bg=CARD_BG,
+        tk.Label(prox_row, textvariable=self._joint_prox_label_var, font=FONT_SMALL, bg=CARD_BG,
                  fg=TEXT_SECONDARY, width=12, anchor="w").pack(side="left")
         tk.Label(prox_row, textvariable=self._joint_prox_var, font=FONT_BODY_BOLD,
                  bg=CARD_BG, fg=PRIMARY).pack(side="left", padx=(2, 4))
@@ -459,10 +463,10 @@ class GaitAnalysisApp:
         tk.Label(prox_row, textvariable=self._joint_prox_device_var, font=FONT_MONO_SM,
                  bg=CARD_BG, fg=TEXT_MAIN).pack(side="left")
 
-        # Distal row
+        # Lower segment row
         dist_row = tk.Frame(content, bg=CARD_BG)
         dist_row.pack(fill="x", padx=12, pady=(2, 2))
-        tk.Label(dist_row, text="远端 (Distal):", font=FONT_SMALL, bg=CARD_BG,
+        tk.Label(dist_row, textvariable=self._joint_dist_label_var, font=FONT_SMALL, bg=CARD_BG,
                  fg=TEXT_SECONDARY, width=12, anchor="w").pack(side="left")
         tk.Label(dist_row, textvariable=self._joint_dist_var, font=FONT_BODY_BOLD,
                  bg=CARD_BG, fg=PRIMARY).pack(side="left", padx=(2, 4))

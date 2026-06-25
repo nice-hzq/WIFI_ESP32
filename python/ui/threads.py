@@ -424,6 +424,8 @@ class JointAngleThread(threading.Thread):
         info = JOINT_OPTIONS[self.joint_key]
         self.proximal_alias = info["proximal"]
         self.distal_alias = info["distal"]
+        self.proximal_label = info.get("prox_label", self.proximal_alias)
+        self.distal_label = info.get("dist_label", self.distal_alias)
         binding_info = {
             "joint_name": self.joint_key,
             "proximal_sensor": self.proximal_alias,
@@ -556,9 +558,9 @@ class JointAngleThread(threading.Thread):
                             buf_n = len(self._device_bufs.get(did, []))
                             role = ""
                             if did == self._prox_id:
-                                role = f"→{self.proximal_alias}(近端)"
+                                role = f"→{self.proximal_alias}({self.proximal_label})"
                             elif did == self._dist_id:
-                                role = f"→{self.distal_alias}(远端)"
+                                role = f"→{self.distal_alias}({self.distal_label})"
                             dev_info.append(f"{did}({alias}){role} buf={buf_n}")
                         self._post("joint_status", state="devices",
                                    message=" | ".join(dev_info))
@@ -575,7 +577,7 @@ class JointAngleThread(threading.Thread):
                     need = int(round(3.0 * 50))
                     if rp < need or rd < need:
                         self._post("joint_calib_error",
-                                   message=f"缓冲数据不足: 近端={rp} 远端={rd} 帧, "
+                                   message=f"缓冲数据不足: {self.proximal_label}={rp} {self.distal_label}={rd} 帧, "
                                            f"需要各 {need} 帧 (3秒)。请等待数据积累。")
                         continue
                     self._post("joint_calib_status", state="calibrating",

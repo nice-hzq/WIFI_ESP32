@@ -53,12 +53,18 @@ MODE_ALIASES = {
 # Joint Angle Constants
 # ============================================================
 JOINT_OPTIONS = {
-    "left_knee":  {"label": "左膝 (Left Knee)",   "proximal": "L4", "distal": "L5"},
-    "right_knee": {"label": "右膝 (Right Knee)",  "proximal": "R4", "distal": "R5"},
-    "left_ankle": {"label": "左踝 (Left Ankle)",  "proximal": "L5", "distal": "L6"},
-    "right_ankle":{"label": "右踝 (Right Ankle)", "proximal": "R5", "distal": "R6"},
-    "left_hip":   {"label": "左髋 (Left Hip)",    "proximal": "S1", "distal": "L4"},
-    "right_hip":  {"label": "右髋 (Right Hip)",   "proximal": "S1", "distal": "R4"},
+    "left_knee":  {"label": "左膝 (Left Knee)",   "proximal": "L4", "distal": "L5",
+                   "prox_label": "大腿 (Thigh)", "dist_label": "小腿 (Shank)"},
+    "right_knee": {"label": "右膝 (Right Knee)",  "proximal": "R4", "distal": "R5",
+                   "prox_label": "大腿 (Thigh)", "dist_label": "小腿 (Shank)"},
+    "left_ankle": {"label": "左踝 (Left Ankle)",  "proximal": "L5", "distal": "L6",
+                   "prox_label": "小腿 (Shank)", "dist_label": "脚掌 (Foot)"},
+    "right_ankle":{"label": "右踝 (Right Ankle)", "proximal": "R5", "distal": "R6",
+                   "prox_label": "小腿 (Shank)", "dist_label": "脚掌 (Foot)"},
+    "left_hip":   {"label": "左髋 (Left Hip)",    "proximal": "S1", "distal": "L4",
+                   "prox_label": "骨盆 (Pelvis)", "dist_label": "大腿 (Thigh)"},
+    "right_hip":  {"label": "右髋 (Right Hip)",   "proximal": "S1", "distal": "R4",
+                   "prox_label": "骨盆 (Pelvis)", "dist_label": "大腿 (Thigh)"},
 }
 
 CALIB_MODES = {

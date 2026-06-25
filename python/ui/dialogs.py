@@ -184,6 +184,8 @@ def open_joint_device_mapping_dialog(parent, calib_dir, current_joint_key,
     joint_label = joint_info.get("label", current_joint_key)
     prox_alias = joint_info.get("proximal", "?")
     dist_alias = joint_info.get("distal", "?")
+    prox_label = joint_info.get("prox_label", prox_alias)
+    dist_label = joint_info.get("dist_label", dist_alias)
 
     dialog = tk.Toplevel(parent)
     dialog.title("关节设备映射 — Joint Device Mapping")
@@ -199,7 +201,7 @@ def open_joint_device_mapping_dialog(parent, calib_dir, current_joint_key,
              font=("Microsoft YaHei UI", 12, "bold"),
              bg="#FFFFFF", fg="#111827").pack(pady=(16, 4))
     tk.Label(dialog,
-             text=f"当前关节: {joint_label}  |  近端={prox_alias}  远端={dist_alias}",
+             text=f"当前关节: {joint_label}  |  {prox_label}={prox_alias}  {dist_label}={dist_alias}",
              font=("Microsoft YaHei UI", 9, "bold"),
              bg="#FFFFFF", fg="#2563EB").pack(pady=(0, 4))
     tk.Label(dialog, text="输入设备 ID（传感器外壳上的 WT 编号），然后选择对应的身体位置。",
@@ -308,14 +310,14 @@ def open_joint_device_mapping_dialog(parent, calib_dir, current_joint_key,
         empty_rows = [r for r in _rows
                       if not r["dev_entry"].get().strip()
                       and not r["alias_var"].get().strip()]
-        needed = [(prox_alias, "近端"), (dist_alias, "远端")]
-        for i, (alias, _role) in enumerate(needed):
+        needed = [(prox_alias, prox_label), (dist_alias, dist_label)]
+        for i, (alias, _label) in enumerate(needed):
             if i < len(empty_rows):
                 empty_rows[i]["alias_var"].set(alias)
             else:
                 _add_row(alias_val=alias)
 
-    tk.Button(quick_row, text=f"填入 {prox_alias}(近端)+{dist_alias}(远端)",
+    tk.Button(quick_row, text=f"填入 {prox_label}({prox_alias})+{dist_label}({dist_alias})",
               font=("Microsoft YaHei UI", 8),
               bg="#F0F9FF", fg="#0369A1", bd=0,
               activebackground="#E0F2FE",
