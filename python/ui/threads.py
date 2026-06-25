@@ -310,6 +310,7 @@ class JointAngleThread(threading.Thread):
         self._calib = None
         self._buffer = b""
         self._joint_save_path = None        # 会话数据保存路径
+        self._warned_uncalib = False        # 是否已提示需要校准
         # device_id → buffer (用于自动识别和标定)
         self._device_bufs: dict = {}     # {device_id: [imu9_frames]}
         self._device_detected: list = []  # 按上线顺序记录的 device_id 列表
@@ -518,12 +519,19 @@ class JointAngleThread(threading.Thread):
                 # 尝试识别传感器
                 self._identify_sensors()
 
-                # 如果已识别，执行角度计算
+                # 如果已识别，执行角度计算（始终更新引擎，但仅标定后才发送曲线数据）
                 if self._prox_id and self._dist_id:
                     imu_p, imu_d = self._get_engine_inputs()
                     if imu_p is not None and imu_d is not None:
                         engine.update(imu_p, imu_d)
                         state = engine.get_state()
+                        # 未标定时不输出曲线，避免显示无意义的数值
+                        if not engine.has_calibration():
+                            if engine.is_ready() and not getattr(self, '_warned_uncalib', False):
+                                self._warned_uncalib = True
+                                self._post("joint_status", state="waiting_calib",
+                                           message="引擎已就绪，请保持静止站立后点击「开始校准」")
+                            continue
                         # 每 5 帧发一次（50Hz→10Hz），大幅减少 queue 流量
                         frame_count = getattr(self, '_angle_frame_count', 0) + 1
                         self._angle_frame_count = frame_count

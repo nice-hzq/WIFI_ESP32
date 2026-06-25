@@ -1568,6 +1568,9 @@ class GaitAnalysisApp:
                             self._joint_prox_device_var.set(prox_id)
                         if dist_id:
                             self._joint_dist_device_var.set(dist_id)
+                    elif state == "waiting_calib":
+                        # 引擎已就绪，提示用户进行校准
+                        self.joint_status_var.set(f"⚠ {msg.get('message', '')}")
                     elif state == "devices":
                         # 周期性设备状态 — 刷新显示
                         self._update_joint_device_display()
