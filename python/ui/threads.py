@@ -301,6 +301,8 @@ class JointAngleThread(threading.Thread):
         self.device_map = dict(device_map) if device_map else {}
         self.proximal_alias = proximal_alias or "L4"
         self.distal_alias = distal_alias or "L5"
+        self.proximal_label = "大腿 (Thigh)"
+        self.distal_label = "小腿 (Shank)"
 
         # Runtime
         self._ser = None
@@ -599,78 +601,87 @@ class JointAngleThread(threading.Thread):
         self._joint_save_path = self._save_joint_data()
 
     def _save_joint_data(self):
-        """保存当前会话的关节角度数据到带时间戳的文件夹。
+        """保存当前会话的关节角度数据到 joint_csv/ 带时间戳的文件夹。
 
         文件夹结构:
-          data/joint_angle_YYYYMMDD_HHMMSS/
+          joint_csv/joint_angle_YYYYMMDD_HHMMSS/
             joint_angle_data.csv
             session_info.json
 
         Returns:
             str: 保存目录路径，若无数据则返回 None
         """
-        import json as _json
-        from datetime import datetime as _datetime
+        try:
+            import json as _json
+            from datetime import datetime as _datetime
 
-        engine = getattr(self, '_engine', None)
-        if engine is None or not engine.is_ready():
+            engine = getattr(self, '_engine', None)
+            if engine is None or not engine.is_ready():
+                return None
+
+            state = engine.get_state()
+            n = len(state.history_t) if state.history_t else 0
+            if n < 2:
+                return None
+
+            # 确保三个列表长度一致
+            n = min(n, len(state.history_flexion),
+                    len(state.history_abduction), len(state.history_rotation))
+            if n < 2:
+                return None
+
+            # 创建输出目录: joint_csv/joint_angle_YYYYMMDD_HHMMSS/
+            ts = _datetime.now().strftime("%Y%m%d_%H%M%S")
+            project_root = os.path.dirname(os.path.dirname(self.calib_dir))
+            session_dir = os.path.join(project_root, "joint_csv", f"joint_angle_{ts}")
+            os.makedirs(session_dir, exist_ok=True)
+
+            # ---- 保存角度 CSV ----
+            csv_path = os.path.join(session_dir, "joint_angle_data.csv")
+            with open(csv_path, "w", newline="", encoding="utf-8") as f:
+                writer = csv.writer(f)
+                writer.writerow(["time_s", "flexion_deg", "abduction_deg", "rotation_deg"])
+                t0 = state.history_t[0]
+                for i in range(n):
+                    t_rel = state.history_t[i] - t0
+                    writer.writerow([
+                        f"{t_rel:.3f}",
+                        f"{state.history_flexion[i]:.4f}",
+                        f"{state.history_abduction[i]:.4f}",
+                        f"{state.history_rotation[i]:.4f}",
+                    ])
+
+            # ---- 保存会话信息 JSON ----
+            session_info = {
+                "joint_key": self.joint_key,
+                "proximal_sensor": self.proximal_alias,
+                "distal_sensor": self.distal_alias,
+                "proximal_label": getattr(self, 'proximal_label', self.proximal_alias),
+                "distal_label": getattr(self, 'distal_label', self.distal_alias),
+                "proximal_device_id": self._prox_id or "",
+                "distal_device_id": self._dist_id or "",
+                "calibrated": engine.has_calibration(),
+                "calibration_mode": self._calib.calibration_mode if self._calib else "",
+                "sample_count": n,
+                "duration_s": round(state.history_t[-1] - state.history_t[0], 2) if n >= 2 else 0,
+                "fs": int(engine.fs),
+                "created_time": _datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                "flexion_rom_deg": round(state.rom_deg, 2),
+                "flexion_max_deg": round(state.max_flexion_deg, 2),
+                "flexion_min_deg": round(state.min_flexion_deg, 2),
+            }
+            json_path = os.path.join(session_dir, "session_info.json")
+            with open(json_path, "w", encoding="utf-8") as f:
+                _json.dump(session_info, f, ensure_ascii=False, indent=2)
+
+            print(f"[JOINT-THREAD] 数据已保存: {csv_path} ({n} 帧)")
+            return session_dir
+
+        except Exception as e:
+            print(f"[JOINT-THREAD] 保存数据失败: {type(e).__name__}: {e}")
+            import traceback as _tb
+            _tb.print_exc()
             return None
-
-        state = engine.get_state()
-        if not state.history_t or len(state.history_t) < 2:
-            return None
-
-        # 创建输出目录
-        ts = _datetime.now().strftime("%Y%m%d_%H%M%S")
-        # 从 calib_dir 推导项目根目录
-        project_root = os.path.dirname(os.path.dirname(self.calib_dir))
-        data_dir = os.path.join(project_root, "data")
-        session_dir = os.path.join(data_dir, f"joint_angle_{ts}")
-        os.makedirs(session_dir, exist_ok=True)
-
-        # ---- 保存角度 CSV ----
-        csv_path = os.path.join(session_dir, "joint_angle_data.csv")
-        with open(csv_path, "w", newline="", encoding="utf-8") as f:
-            writer = csv.writer(f)
-            writer.writerow(["time_s", "flexion_deg", "abduction_deg", "rotation_deg"])
-            t0 = state.history_t[0]
-            for i in range(len(state.history_t)):
-                t_rel = state.history_t[i] - t0
-                writer.writerow([
-                    f"{t_rel:.3f}",
-                    f"{state.history_flexion[i]:.4f}",
-                    f"{state.history_abduction[i]:.4f}",
-                    f"{state.history_rotation[i]:.4f}",
-                ])
-
-        # ---- 保存会话信息 JSON ----
-        from ui import JOINT_OPTIONS
-        info = JOINT_OPTIONS.get(self.joint_key, {})
-        session_info = {
-            "joint_key": self.joint_key,
-            "joint_label": info.get("label", self.joint_key),
-            "proximal_sensor": self.proximal_alias,
-            "distal_sensor": self.distal_alias,
-            "proximal_label": self.proximal_label,
-            "distal_label": self.distal_label,
-            "proximal_device_id": self._prox_id or "",
-            "distal_device_id": self._dist_id or "",
-            "calibrated": engine.has_calibration(),
-            "calibration_mode": self._calib.calibration_mode if self._calib else "",
-            "sample_count": len(state.history_t),
-            "duration_s": round(state.history_t[-1] - state.history_t[0], 2) if len(state.history_t) >= 2 else 0,
-            "fs": int(engine.fs),
-            "created_time": _datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-            "flexion_rom_deg": round(state.rom_deg, 2),
-            "flexion_max_deg": round(state.max_flexion_deg, 2),
-            "flexion_min_deg": round(state.min_flexion_deg, 2),
-        }
-        json_path = os.path.join(session_dir, "session_info.json")
-        with open(json_path, "w", encoding="utf-8") as f:
-            _json.dump(session_info, f, ensure_ascii=False, indent=2)
-
-        print(f"[JOINT-THREAD] 数据已保存: {csv_path} ({len(state.history_t)} 帧)")
-        return session_dir
 
     def run(self):
         try:
@@ -686,8 +697,4 @@ class JointAngleThread(threading.Thread):
                 except Exception:
                     pass
                 self._ser = None
-            save_path = getattr(self, '_joint_save_path', None)
-            msg = "关节角度测量已停止"
-            if save_path:
-                msg += f" — 数据已保存 → {save_path}"
-            self._post("joint_status", state="disconnected", message=msg)
+            self._post("joint_status", state="disconnected", message="关节角度测量已停止")

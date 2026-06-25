@@ -4,6 +4,7 @@
 .vscode/launch.json
 .vscode/ipch
 data/
+joint_csv/
 python/output/
 python/temp/
 python/venv/
