@@ -517,38 +517,40 @@ class JointAngleThread(threading.Thread):
                     if imu_p is not None and imu_d is not None:
                         engine.update(imu_p, imu_d)
                         state = engine.get_state()
-                        # 未标定时不输出曲线，避免显示无意义的数值
-                        if not engine.has_calibration():
+                        calibrated = engine.has_calibration()
+
+                        # 未标定时提醒用户，但不发送曲线数据
+                        if not calibrated:
                             if engine.is_ready() and not getattr(self, '_warned_uncalib', False):
                                 self._warned_uncalib = True
                                 self._post("joint_status", state="waiting_calib",
                                            message="引擎已就绪，请保持静止站立后点击「开始校准」")
-                            continue
-                        # 每 5 帧发一次（50Hz→10Hz），大幅减少 queue 流量
-                        frame_count = getattr(self, '_angle_frame_count', 0) + 1
-                        self._angle_frame_count = frame_count
-                        if frame_count % 5 == 0:
-                            # 降采样: 50Hz 存储 → 每 5 帧取 1 (10Hz)，取最近 600 点 = 60 秒
-                            step = 5
-                            t_raw = state.history_t
-                            f_raw = state.history_flexion
-                            a_raw = state.history_abduction
-                            r_raw = state.history_rotation
-                            n_ds = min(600, len(t_raw) // step)
-                            self._post("joint_angle",
-                                       joint=self.joint_key,
-                                       flexion_deg=round(state.flexion_deg, 2),
-                                       abduction_deg=round(state.abduction_deg, 2),
-                                       rotation_deg=round(state.rotation_deg, 2),
-                                       max_deg=round(state.max_flexion_deg, 2),
-                                       min_deg=round(state.min_flexion_deg, 2),
-                                       rom_deg=round(state.rom_deg, 2),
-                                       history_t=t_raw[-n_ds * step::step],
-                                       history_flexion=f_raw[-n_ds * step::step],
-                                       history_abduction=a_raw[-n_ds * step::step],
-                                       history_rotation=r_raw[-n_ds * step::step],
-                                       initialized=engine.is_ready(),
-                                       calibrated=engine.has_calibration())
+                        else:
+                            # 每 5 帧发一次（50Hz→10Hz），大幅减少 queue 流量
+                            frame_count = getattr(self, '_angle_frame_count', 0) + 1
+                            self._angle_frame_count = frame_count
+                            if frame_count % 5 == 0:
+                                # 降采样: 50Hz 存储 → 每 5 帧取 1 (10Hz)，取最近 600 点 = 60 秒
+                                step = 5
+                                t_raw = state.history_t
+                                f_raw = state.history_flexion
+                                a_raw = state.history_abduction
+                                r_raw = state.history_rotation
+                                n_ds = min(600, len(t_raw) // step)
+                                self._post("joint_angle",
+                                           joint=self.joint_key,
+                                           flexion_deg=round(state.flexion_deg, 2),
+                                           abduction_deg=round(state.abduction_deg, 2),
+                                           rotation_deg=round(state.rotation_deg, 2),
+                                           max_deg=round(state.max_flexion_deg, 2),
+                                           min_deg=round(state.min_flexion_deg, 2),
+                                           rom_deg=round(state.rom_deg, 2),
+                                           history_t=t_raw[-n_ds * step::step],
+                                           history_flexion=f_raw[-n_ds * step::step],
+                                           history_abduction=a_raw[-n_ds * step::step],
+                                           history_rotation=r_raw[-n_ds * step::step],
+                                           initialized=engine.is_ready(),
+                                           calibrated=True)
 
                 # 每 3 秒报告一次设备状态
                 now = time.time()
