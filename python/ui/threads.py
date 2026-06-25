@@ -374,7 +374,9 @@ class JointAngleThread(threading.Thread):
             self._dist_id = dist_candidates[0]
             self._post("joint_status", state="identified",
                        message=f"传感器已识别: {self.proximal_alias}={self._prox_id}, "
-                               f"{self.distal_alias}={self._dist_id}")
+                               f"{self.distal_alias}={self._dist_id}",
+                       proximal_id=self._prox_id, distal_id=self._dist_id,
+                       proximal_alias=self.proximal_alias, distal_alias=self.distal_alias)
             return
 
         # 方法2：按上线顺序自动分配（前两个设备）
@@ -384,7 +386,9 @@ class JointAngleThread(threading.Thread):
             self._post("joint_status", state="identified",
                        message=f"自动分配: {self.proximal_alias}={self._prox_id}, "
                                f"{self.distal_alias}={self._dist_id} "
-                               f"(未找到 device_alias_map.json，按上线顺序)")
+                               f"(未找到 device_alias_map.json，按上线顺序)",
+                       proximal_id=self._prox_id, distal_id=self._dist_id,
+                       proximal_alias=self.proximal_alias, distal_alias=self.distal_alias)
             return
 
     def _get_engine_inputs(self):
@@ -499,7 +503,8 @@ class JointAngleThread(threading.Thread):
                     self._device_detected.append(device_id)
                     alias = self._resolve_device(device_id) or "?"
                     self._post("joint_status", state="device_detected",
-                               message=f"检测到设备: {device_id} → {alias}")
+                               message=f"检测到设备: {device_id} → {alias}",
+                               device_id=device_id, alias=alias)
                 self._device_bufs[device_id].append(imu9)
                 # 限制缓冲大小
                 if len(self._device_bufs[device_id]) > 500:

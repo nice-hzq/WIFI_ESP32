@@ -125,6 +125,15 @@ class GaitAnalysisApp:
         self._joint_history_abduction = []
         self._joint_history_rotation = []
 
+        # ── Joint sensor alias display ──
+        self._joint_prox_var = tk.StringVar(value="L4")
+        self._joint_dist_var = tk.StringVar(value="L5")
+
+        # ── Joint device mapping ──
+        self._joint_prox_device_var = tk.StringVar(value="—")
+        self._joint_dist_device_var = tk.StringVar(value="—")
+        self._joint_device_map = {}  # {device_id: alias} 缓存
+
         # ── Summary card StringVars ──
         self.summary_speed_var = tk.StringVar(value="--")
         self.summary_cadence_var = tk.StringVar(value="--")
@@ -431,21 +440,43 @@ class GaitAnalysisApp:
             info = JOINT_OPTIONS.get(key, {})
             self._joint_prox_var.set(f"{info.get('proximal', '?')}")
             self._joint_dist_var.set(f"{info.get('distal', '?')}")
+            # 重置设备 ID 显示并尝试从已保存映射中解析
+            self._joint_prox_device_var.set("—")
+            self._joint_dist_device_var.set("—")
+            self._update_joint_device_display()
         self.joint_var.trace_add("write", _on_joint_change)
 
-        # ── Sensor binding display ──
-        bind_row = tk.Frame(content, bg=CARD_BG)
-        bind_row.pack(fill="x", padx=12, pady=(0, 4))
-        tk.Label(bind_row, text="近端 (Proximal):", font=FONT_SMALL, bg=CARD_BG,
-                 fg=TEXT_SECONDARY).pack(side="left")
-        self._joint_prox_var = tk.StringVar(value="L4")
-        tk.Label(bind_row, textvariable=self._joint_prox_var, font=FONT_BODY_BOLD,
-                 bg=CARD_BG, fg=PRIMARY).pack(side="left", padx=(4, 12))
-        tk.Label(bind_row, text="远端 (Distal):", font=FONT_SMALL, bg=CARD_BG,
-                 fg=TEXT_SECONDARY).pack(side="left")
-        self._joint_dist_var = tk.StringVar(value="L5")
-        tk.Label(bind_row, textvariable=self._joint_dist_var, font=FONT_BODY_BOLD,
-                 bg=CARD_BG, fg=PRIMARY).pack(side="left", padx=(4, 0))
+        # ── Sensor binding display (alias + device ID) ──
+        # Proximal row
+        prox_row = tk.Frame(content, bg=CARD_BG)
+        prox_row.pack(fill="x", padx=12, pady=(2, 2))
+        tk.Label(prox_row, text="近端 (Proximal):", font=FONT_SMALL, bg=CARD_BG,
+                 fg=TEXT_SECONDARY, width=12, anchor="w").pack(side="left")
+        tk.Label(prox_row, textvariable=self._joint_prox_var, font=FONT_BODY_BOLD,
+                 bg=CARD_BG, fg=PRIMARY).pack(side="left", padx=(2, 4))
+        tk.Label(prox_row, text="→", font=FONT_SMALL, bg=CARD_BG,
+                 fg=TEXT_SECONDARY).pack(side="left", padx=(0, 4))
+        tk.Label(prox_row, textvariable=self._joint_prox_device_var, font=FONT_MONO_SM,
+                 bg=CARD_BG, fg=TEXT_MAIN).pack(side="left")
+
+        # Distal row
+        dist_row = tk.Frame(content, bg=CARD_BG)
+        dist_row.pack(fill="x", padx=12, pady=(2, 2))
+        tk.Label(dist_row, text="远端 (Distal):", font=FONT_SMALL, bg=CARD_BG,
+                 fg=TEXT_SECONDARY, width=12, anchor="w").pack(side="left")
+        tk.Label(dist_row, textvariable=self._joint_dist_var, font=FONT_BODY_BOLD,
+                 bg=CARD_BG, fg=PRIMARY).pack(side="left", padx=(2, 4))
+        tk.Label(dist_row, text="→", font=FONT_SMALL, bg=CARD_BG,
+                 fg=TEXT_SECONDARY).pack(side="left", padx=(0, 4))
+        tk.Label(dist_row, textvariable=self._joint_dist_device_var, font=FONT_MONO_SM,
+                 bg=CARD_BG, fg=TEXT_MAIN).pack(side="left")
+
+        # ── Device mapping config button ──
+        cfg_row = tk.Frame(content, bg=CARD_BG)
+        cfg_row.pack(fill="x", padx=12, pady=(4, 4))
+        self.btn_joint_device_map = self._make_small_btn(
+            cfg_row, "⚙ 配置设备映射", self._open_joint_device_mapping, width=18)
+        self.btn_joint_device_map.pack(side="left")
 
         # ── Calibration mode ──
         cal_row = tk.Frame(content, bg=CARD_BG)
@@ -864,6 +895,7 @@ class GaitAnalysisApp:
             "▶  开始测量", "▶  开始测量", SUCCESS, SUCCESS_MUTED)
         self._set_action_btn_state(self.btn_joint_stop, False,
             "■  停止测量", "■  停止测量", DANGER, DANGER_MUTED)
+        self.btn_joint_device_map.config(state="normal")
 
     # ============================================================
     # State Transitions
@@ -891,6 +923,7 @@ class GaitAnalysisApp:
                 "▶  开始测量", "▶  开始测量", SUCCESS, SUCCESS_MUTED)
             self._set_action_btn_state(self.btn_joint_stop, False,
                 "■  停止测量", "■  停止测量", DANGER, DANGER_MUTED)
+            self.btn_joint_device_map.config(state="normal")
 
         elif new_state == UIState.COLLECTING:
             self._set_action_btn_state(self.btn_start, False,
@@ -906,6 +939,7 @@ class GaitAnalysisApp:
                 "▶  开始测量", "▶  开始测量", SUCCESS, SUCCESS_MUTED)
             self._set_action_btn_state(self.btn_joint_stop, False,
                 "■  停止测量", "■  停止测量", DANGER, DANGER_MUTED)
+            self.btn_joint_device_map.config(state="disabled")
             self._update_title_status("● 采集中", BADGE_BLUE_BG, BADGE_BLUE_TEXT)
 
         elif new_state == UIState.STOPPING:
@@ -914,6 +948,7 @@ class GaitAnalysisApp:
             self._set_action_btn_state(self.btn_stop, False,
                 "■  停止采集", "◌ 停止中", DANGER, DANGER_MUTED)
             self.btn_new_session.config(state="disabled")
+            self.btn_joint_device_map.config(state="disabled")
             self._update_title_status("◌ 停止中", BADGE_ORANGE_BG, BADGE_ORANGE_TEXT)
 
         elif new_state == UIState.ANALYZING:
@@ -926,6 +961,7 @@ class GaitAnalysisApp:
                 "▶  运行步态分析", "⏳ 分析中...", PRIMARY, PRIMARY_MUTED, muted_fg="#1E40AF")
             self.btn_clear_results.config(state="disabled")
             self.btn_export_results.config(state="disabled")
+            self.btn_joint_device_map.config(state="disabled")
             self._update_title_status("⏳ 分析中", BADGE_BLUE_BG, BADGE_BLUE_TEXT)
             # Show progress bar
             self.status_progress.pack(side="right", padx=(0, 12), pady=3)
@@ -1234,8 +1270,13 @@ class GaitAnalysisApp:
 
         self._clear_joint_tab()
 
+        # 加载设备映射并传给线程
+        self._load_joint_device_map()
+        self._update_joint_device_display()
+
         self.joint_thread = JointAngleThread(
-            port, baud, joint_key, self.queue, calib_dir)
+            port, baud, joint_key, self.queue, calib_dir,
+            device_map=self._joint_device_map)
         self.joint_thread.start()
 
     def _stop_joint(self):
@@ -1288,6 +1329,57 @@ class GaitAnalysisApp:
             self.btn_joint_calib.config(state="disabled")
         else:
             self.btn_joint_calib.config(state="normal")
+
+    # ── Joint Device Mapping helpers ──
+    def _load_joint_device_map(self):
+        """从 calib_dir 加载 device_alias_map.json 并缓存。"""
+        import os as _os
+        from . import get_base_dir as _get_base_dir
+        from .dialogs import load_alias_map as _load_alias_map
+        script_dir = _get_base_dir()
+        calib_dir = _os.path.join(script_dir, "temp")
+        self._joint_device_map = _load_alias_map(calib_dir)
+        return self._joint_device_map
+
+    def _update_joint_device_display(self):
+        """根据 device_map 反查当前关节的 prox/dist 设备 ID 并更新显示。"""
+        dm = self._joint_device_map
+        prox_alias = self._joint_prox_var.get()
+        dist_alias = self._joint_dist_var.get()
+
+        prox_dev = "—"
+        for dev_id, alias in dm.items():
+            if alias == prox_alias:
+                prox_dev = dev_id
+                break
+
+        dist_dev = "—"
+        for dev_id, alias in dm.items():
+            if alias == dist_alias:
+                dist_dev = dev_id
+                break
+
+        self._joint_prox_device_var.set(prox_dev)
+        self._joint_dist_device_var.set(dist_dev)
+
+    def _open_joint_device_mapping(self):
+        """打开关节角度设备映射配置对话框。"""
+        if self.state != UIState.IDLE:
+            messagebox.showwarning("操作冲突",
+                                   "请先停止当前测量再配置设备映射。")
+            return
+        import os as _os
+        from . import get_base_dir as _get_base_dir
+        from .dialogs import open_joint_device_mapping_dialog as _open_dlg
+        script_dir = _get_base_dir()
+        calib_dir = _os.path.join(script_dir, "temp")
+
+        def _on_mapping_saved():
+            self._load_joint_device_map()
+            self._update_joint_device_display()
+
+        _open_dlg(self.root, calib_dir, self.joint_var.get(),
+                  on_save_callback=_on_mapping_saved)
 
     def _clear_joint_tab(self):
         for w in self.tab_joint.winfo_children():
@@ -1460,6 +1552,21 @@ class GaitAnalysisApp:
                     elif state == "disconnected":
                         self.joint_status_var.set(f"✗ {msg.get('message', '')}")
                         self._on_joint_done()
+                    elif state == "device_detected":
+                        # 新设备上线 — 刷新映射显示
+                        self._load_joint_device_map()
+                        self._update_joint_device_display()
+                    elif state == "identified":
+                        # 传感器已识别 — 用结构化字段直接更新设备 ID
+                        prox_id = msg.get("proximal_id", "")
+                        dist_id = msg.get("distal_id", "")
+                        if prox_id:
+                            self._joint_prox_device_var.set(prox_id)
+                        if dist_id:
+                            self._joint_dist_device_var.set(dist_id)
+                    elif state == "devices":
+                        # 周期性设备状态 — 刷新显示
+                        self._update_joint_device_display()
                     self.status_bar_var.set(msg.get("message", ""))
 
                 elif mt == "joint_angle":
