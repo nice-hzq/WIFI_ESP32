@@ -3,7 +3,7 @@ import json
 
 from gait.event_detection import gait_to_hs_from_filtered_gyro_x_adaptive
 
-def compute_total_cadence_from_hs(left_hs, right_hs, fs=100):
+def compute_total_cadence_from_hs(left_hs, right_hs, fs=50):
     left_hs = np.asarray(left_hs, dtype=int)
     right_hs = np.asarray(right_hs, dtype=int)
 
@@ -19,7 +19,7 @@ def compute_total_cadence_from_hs(left_hs, right_hs, fs=100):
 
     cadence = 60.0 * total_steps / duration_s
     return float(cadence)
-def compute_gait_metrics_json(res_gyro, fs=100):
+def compute_gait_metrics_json(res_gyro, fs=50):
     left = res_gyro["left"]
     right = res_gyro["right"]
 
@@ -91,7 +91,7 @@ def compute_gait_metrics_json(res_gyro, fs=100):
     cadence_right = float(60.0 * right_steps / total_time) if total_time > 0 else None
 
     # cadence_total = compute_total_cadence_from_hs(
-    #     left["HS_idx"], right["HS_idx"], fs=100
+    #     left["HS_idx"], right["HS_idx"], fs=50
     # )
     # print("总步频:", cadence_total)
     # ========= 4) 正确构造支撑区间 =========

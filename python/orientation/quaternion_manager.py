@@ -34,7 +34,7 @@ def rotate_acc_to_world(acc_s, quat_wxyz, *, direction="world<-sensor", acc_unit
 
     return acc_w
 
-def remove_gravity_and_static_bias(acc_world, fs=100, n_init=200):
+def remove_gravity_and_static_bias(acc_world, fs=50, n_init=200):
     """
     acc_world: (N,3) 已经旋到 world 的加速度 (m/s^2)
     返回:
@@ -53,12 +53,11 @@ def remove_gravity_and_static_bias(acc_world, fs=100, n_init=200):
 
     # 静止段线加速度应为 0，做偏置校正
     bias = acc_lin[:n_init].mean(axis=0)
-    # acc_lin = acc_lin - bias
-    acc_lin = acc_lin
+    acc_lin = acc_lin - bias
 
     return acc_lin, g_vec, bias
 
-def plot_acc_world_check(arr9, quat_wxyz, fs=100, *, direction, acc_unit="g", sec=4.0):
+def plot_acc_world_check(arr9, quat_wxyz, fs=50, *, direction, acc_unit="g", sec=4.0):
     import matplotlib.pyplot as plt
 
     acc_s = arr9[:, 0:3]
@@ -352,9 +351,9 @@ class QuaternionManager:
 #         columns=["Acc_x","Acc_y","Acc_z","Gyr_x","Gyr_y","Gyr_z","Geo_x","Geo_y","Geo_z"],
 #         aliases=["S1", "R6", "L6"]
 #     )
-# # q0_L, wb_L = init_from_static(arr3, fs=100,n_first=200, n_init=400, acc_unit="g", gyr_unit="deg", use_mag=False)
+# # q0_L, wb_L = init_from_static(arr3, fs=50,n_first=200, n_init=400, acc_unit="g", gyr_unit="deg", use_mag=False)
 # #
-# # mgr = QuaternionManager(fs=100)
+# # mgr = QuaternionManager(fs=50)
 # #
 # # # 步态用：脚部建议先关磁力计（抗干扰更稳）
 # # mgr.add_node("L_foot", use_mag=False, kp=0.8, ki=1e-5,q0=q0_L)
@@ -380,10 +379,10 @@ class QuaternionManager:
 # # print(norms.min(), norms.max())
 #
 #
-# mgr = QuaternionManager(fs=100)
+# mgr = QuaternionManager(fs=50)
 # node = MahonyOrientationNode(
 #     name="L_foot",
-#     fs=100,
+#     fs=50,
 #     use_mag=False,
 #     acc_unit="g",
 #     gyr_unit="deg",
@@ -401,11 +400,11 @@ class QuaternionManager:
 #
 #
 # # 看两种方向哪个对
-# acc_w1 = plot_acc_world_check(arr3, quat_L_wxyz, fs=100, direction="world<-sensor", acc_unit="g", sec=4.0)
-# acc_w2 = plot_acc_world_check(arr3, quat_L_wxyz, fs=100, direction="sensor<-world", acc_unit="g", sec=4.0)
+# acc_w1 = plot_acc_world_check(arr3, quat_L_wxyz, fs=50, direction="world<-sensor", acc_unit="g", sec=4.0)
+# acc_w2 = plot_acc_world_check(arr3, quat_L_wxyz, fs=50, direction="sensor<-world", acc_unit="g", sec=4.0)
 #
 # acc_w = rotate_acc_to_world(arr3[:,0:3], quat_L_wxyz, direction="world<-sensor", acc_unit="g")
 #
 #
-# acc_lin_w, g_vec, bias = remove_gravity_and_static_bias(acc_w, fs=100, n_init=200)
+# acc_lin_w, g_vec, bias = remove_gravity_and_static_bias(acc_w, fs=50, n_init=200)
 # print("g_vec:", g_vec, "bias:", bias)

@@ -11,4 +11,5 @@ python/.idea/
 python/Data/temp/
 build/
 dist/
+release/
 *.spec.bak

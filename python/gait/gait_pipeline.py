@@ -21,11 +21,12 @@ import time, json, math
 import numpy as np
 from gait.count_phase import _mahony_quats_from_array, detect_turn_segments_waist, gait_from_feet_gyro_x, count_steps_during_turns
 from report.gait_models import *
+from output.attitude_curves import save_attitude_curves
 
 
 def run_gait_pipeline(
     *,
-    fs: int = 100,
+    fs: int = 50,
     window_size: int = 5,
     gyro_unit_for_files: str = 'deg',
     use_mag: bool = True,
@@ -104,6 +105,24 @@ def run_gait_pipeline(
     # 建立 alias -> array 的查找表
     arr_map = dict(zip(sensor_aliases, arrs))
 
+    # =====================================================
+    # ★ 保存传感器姿态曲线到 output 目录
+    # =====================================================
+    if config.curveDir:
+        try:
+            # 过滤掉 None 的数据
+            valid_data = {k: v for k, v in arr_map.items() if v is not None}
+            save_attitude_curves(
+                valid_data,
+                fs=fs,
+                output_dir=config.curveDir,
+                kp=1.5, ki=0.05,
+                use_mag=use_mag,
+                gyro_unit=gyro_unit_for_files,
+            )
+        except Exception as e:
+            print(f"[WARN] 姿态曲线保存失败: {e}")
+
     arr_S1 = arr_map.get("S1", None)
     arr_L6 = arr_map.get("L6", None)
     arr_R6 = arr_map.get("R6", None)
@@ -170,8 +189,9 @@ def run_gait_pipeline(
     # =====================================================
     # 4) 空间参数：双检测器平均
     # =====================================================
+    # 注意：run_dual_detector_spatial_average_pipeline(arr2=右脚, arr3=左脚)
     fusion_result = run_dual_detector_spatial_average_pipeline(
-        arr_L6, arr_R6, fs=fs
+        arr_R6, arr_L6, fs=fs
     )
 
     # =====================================================
@@ -269,7 +289,7 @@ if __name__ == "__main__":
     config.originalDir = os.path.join(_root_dir, "Data", "步态评估数据", "2")
     config.curveDir = os.path.join(_root_dir, "output")
     config.WORK_MODE = "lower_body"
-    config.fs = 100
+    config.fs = 50
     os.makedirs(config.curveDir, exist_ok=True)
 
     print("=" * 60)

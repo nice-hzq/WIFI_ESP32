@@ -85,7 +85,7 @@ def clean_boolean_runs(mask, fs, min_true_s=None, min_false_s=None):
     return m
 
 
-def filter_acceleration(acc_nav_lin, fs=100.0, lp_hz=15.0, hp_hz=None, order=4,
+def filter_acceleration(acc_nav_lin, fs=50.0, lp_hz=15.0, hp_hz=None, order=4,
                         median_win=None, detrend_linear=False, zero_mean=False):
     a = np.asarray(acc_nav_lin, dtype=float)
     if a.ndim != 2 or a.shape[1] != 3:

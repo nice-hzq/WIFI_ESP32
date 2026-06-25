@@ -8,7 +8,7 @@ from queue import Queue
 from orientation.quaternions import QuaternionManager
 
 # 采样率
-fs = 100
+fs = 50
 # 算法临时目录，例如 C# 传入的 tempDir
 tempDir = ""
 
@@ -184,7 +184,7 @@ MOUNT_Q = {
     "R6": Q_IDENTITY, # 右脚
 }
 
-manager = QuaternionManager(fs=100)
+manager = QuaternionManager(fs=50)
 
 # 注册节点
 manager.add_node("S1")

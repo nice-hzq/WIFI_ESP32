@@ -9,10 +9,10 @@ from core import config
 
 # ---- 1. 配置路径 ----
 config.tempDir = os.path.join(os.path.dirname(__file__), "temp")
-config.originalDir = os.path.join(os.path.dirname(__file__), "Data","步态评估数据","2")
+config.originalDir = os.path.join(os.path.dirname(__file__), "Data","wt901_data_20260615_150535")
 config.curveDir = os.path.join(os.path.dirname(__file__), "output")
 config.WORK_MODE = "lower_body"
-config.fs = 100
+config.fs = 50
 
 os.makedirs(config.curveDir, exist_ok=True)
 
@@ -223,7 +223,7 @@ print("=" * 60)
 from gait.gait_pipeline import run_gait_pipeline
 
 try:
-    result = run_gait_pipeline(fs=100, return_json=True)
+    result = run_gait_pipeline(fs=50, return_json=True)
     print(f"  步态分析完成")
     if isinstance(result, str):
         print(f"  最终 JSON 总长: {len(result)} 字符")

@@ -1,7 +1,7 @@
 {
     "_说明": "步态分析算法静态配置文件。运行时会通过 core/config.py 的 load_config() 加载。",
 
-    "fs": 100,
+    "fs": 50,
     "tempDir": "./temp",
     "originalDir": "./Data",
     "curveDir": "./curveDir",

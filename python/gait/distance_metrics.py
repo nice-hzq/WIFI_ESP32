@@ -6,7 +6,7 @@ from gait.distance_new import zupt_mask_from_hs_to, zupt_integrate_position
 from gait.tool import stride_lengths_from_HS, step_lengths_TO_to_next_HS
 from sensor.data_reader import load_calibrated_filtered_arrays
 from orientation.quaternion_manager import QuaternionManager, MahonyOrientationNode, rotate_acc_to_world, \
-    remove_gravity_and_static_bias
+    remove_gravity_and_static_bias, is_static_segment
 
 
 # =========================================================
@@ -80,7 +80,7 @@ def step_length_from_stride_lengths(stride_length_left, stride_length_right):
 
 
 
-def foot_lift_heights_from_TO_HS(pos_world, TO_idx, HS_idx, v_axis=2, fs=100, min_s=0.20, max_s=2.00):
+def foot_lift_heights_from_TO_HS(pos_world, TO_idx, HS_idx, v_axis=2, fs=50, min_s=0.20, max_s=2.00):
     """
     每个摆动期 TO -> next HS 内，求竖直方向最大抬升高度
     高度定义：max(pos[to:hs, v_axis] - pos[to, v_axis])
@@ -110,7 +110,7 @@ def foot_lift_heights_from_TO_HS(pos_world, TO_idx, HS_idx, v_axis=2, fs=100, mi
     return np.asarray(heights, dtype=float), pairs
 
 
-def step_width_from_alternating_HS(pos_L, hs_L, pos_R, hs_R, ml_axis=0, fs=100, min_s=0.20, max_s=2.00):
+def step_width_from_alternating_HS(pos_L, hs_L, pos_R, hs_R, ml_axis=0, fs=50, min_s=0.20, max_s=2.00):
     """
     用相邻异侧 HS 的横向距离估计 step width
     做法：
@@ -306,7 +306,7 @@ def average_metrics_same_format(metrics_big, metrics_small):
 def stride_speeds_from_HS(
     pos,
     HS_idx,
-    fs=100,
+    fs=50,
     plane_axes=(0, 1),
     ap_axis=None,
     min_stride_time=0.5,
@@ -383,7 +383,7 @@ def compute_spatial_gait_metrics(
     pos_L,
     pos_R,
     res_gyro,
-    fs=100,
+    fs=50,
     plane_axes=(0, 1),   # 水平面，默认 x-y
     ml_axis=0,           # 左右方向
     v_axis=2             # 竖直方向
@@ -415,14 +415,20 @@ def compute_spatial_gait_metrics(
         pos_R, right["TO_idx"], right["HS_idx"], fs=fs, plane_axes=plane_axes
     )
 
-    # step_length_left = _safe_mean(step_L)/2
-    # step_length_right = _safe_mean(step_R)/2
+    # 优先使用 TO→HS 直接位移作为步长（每个摆动期独立计算）
+    step_length_left = _safe_mean(step_L) if len(step_L) > 0 else None
+    step_length_right = _safe_mean(step_R) if len(step_R) > 0 else None
 
-    step_length_left, step_length_right = step_length_from_stride_lengths(
-        stride_length_left,
-        stride_length_right,
-    )
-
+    # 如果 TO→HS 步长不可用，退化为 stride/2
+    if step_length_left is None or step_length_right is None:
+        sl_stride_left, sl_stride_right = step_length_from_stride_lengths(
+            stride_length_left,
+            stride_length_right,
+        )
+        if step_length_left is None:
+            step_length_left = sl_stride_left
+        if step_length_right is None:
+            step_length_right = sl_stride_right
 
     step_length_deviation = (
         abs(step_length_left - step_length_right)
@@ -566,7 +572,46 @@ def compute_spatial_gait_metrics(
     return metrics
 
 
-def run_spatial_pipeline_from_arrays(arr2, arr3, res_gyro, fs=100):
+def _find_common_static_segment(
+    arr_right, arr_left, fs,
+    *,
+    search_step_s=1.0,         # 每隔 1 秒试一个候选起点
+    seg_dur_s=4.0,             # 静止段至少 4 秒
+    gyr_thr_dps=3.0,           # 陀螺模长中位数阈值 (deg/s)
+    acc_std_thr_g=0.05,        # 加速度模长标准差阈值 (g)
+    max_search_s=10.0,         # 最多往前搜 10 秒
+):
+    """
+    在两只脚的数据中寻找同一个时间段内都满足静止条件的区间。
+
+    策略：
+      从数据开头开始，每隔 search_step_s 取 seg_dur_s 长度的一段，
+      同时检查两只脚是否都静止。找到即返回 (n_start, n_end)；
+      搜完 max_search_s 仍未找到，返回 (None, None)。
+    """
+    n_seg = int(round(seg_dur_s * fs))
+    n_step = int(round(search_step_s * fs))
+    n_max = int(round(max_search_s * fs))
+
+    N = min(len(arr_right), len(arr_left))
+    if N < n_seg:
+        return None, None
+
+    for n_start in range(0, min(n_max, N - n_seg), n_step):
+        n_end = n_start + n_seg
+        ok_r = is_static_segment(arr_right[n_start:n_end], fs,
+                                 n=n_seg, gyr_thr_dps=gyr_thr_dps,
+                                 acc_std_thr_g=acc_std_thr_g)
+        ok_l = is_static_segment(arr_left[n_start:n_end], fs,
+                                 n=n_seg, gyr_thr_dps=gyr_thr_dps,
+                                 acc_std_thr_g=acc_std_thr_g)
+        if ok_r and ok_l:
+            return n_start, n_end
+
+    return None, None
+
+
+def run_spatial_pipeline_from_arrays(arr2, arr3, res_gyro, fs=50):
     """
     arr2: 右脚 IMU 9轴
     arr3: 左脚 IMU 9轴
@@ -574,7 +619,23 @@ def run_spatial_pipeline_from_arrays(arr2, arr3, res_gyro, fs=100):
     """
 
     # =====================================================
-    # 1) 左右脚四元数
+    # 1) 寻找双脚共同的静止段用于初始化姿态
+    # =====================================================
+    n_start, n_end = _find_common_static_segment(arr2, arr3, fs)
+
+    if n_start is not None:
+        init_n_first = n_start
+        init_n_end = n_end
+        print(f"[INIT] 双脚共同静止段: [{n_start}, {n_end}] "
+              f"({(n_end-n_start)/fs:.1f}s @ {n_start/fs:.1f}s)")
+    else:
+        # 退化为各自前 4 秒（旧行为）
+        init_n_first = 200
+        init_n_end = 400
+        print("[INIT] 未找到双脚共同静止段，回退为各自前 4 秒")
+
+    # =====================================================
+    # 2) 左右脚四元数（使用同一静止段初始化）
     # =====================================================
     mgr = QuaternionManager(fs=fs)
 
@@ -589,8 +650,8 @@ def run_spatial_pipeline_from_arrays(arr2, arr3, res_gyro, fs=100):
     )
     node_R.init_from_static(
         imu9=arr2,
-        n_first=200,
-        n_init=400,
+        n_first=init_n_first,
+        n_init=init_n_end,
         estimate_gyro_bias=False,
     )
     mgr.add_existing_node(node_R)
@@ -608,8 +669,8 @@ def run_spatial_pipeline_from_arrays(arr2, arr3, res_gyro, fs=100):
     )
     node_L.init_from_static(
         imu9=arr3,
-        n_first=100,
-        n_init=400,
+        n_first=init_n_first,
+        n_init=init_n_end,
         estimate_gyro_bias=False,
     )
     mgr.add_existing_node(node_L)
@@ -703,16 +764,16 @@ def run_spatial_pipeline_from_arrays(arr2, arr3, res_gyro, fs=100):
     }
 
 
-def run_dual_detector_spatial_average_pipeline(arr2, arr3, fs=100):
+def run_dual_detector_spatial_average_pipeline(arr2, arr3, fs=50):
     # ==============================
-    # 1) 偏大版本
+    # 1) 偏大版本 (HS = platform: 在负峰后找平坦近零点 → HS 偏晚 → 步长偏大)
     # ==============================
     res_gyro_big = gait_to_hs_from_filtered_gyro_x_adaptive(
         left_gyr_x=arr3[:, 3],
         right_gyr_x=arr2[:, 3],
         fs=fs,
         input_unit='deg',
-        hs_method = "platform",
+        hs_method="platform",
         return_debug=True
     )
 
@@ -724,14 +785,14 @@ def run_dual_detector_spatial_average_pipeline(arr2, arr3, fs=100):
     )
 
     # ==============================
-    # 2) 偏小版本
+    # 2) 偏小版本 (HS = zero_cross: MS 右侧第一个过零点 → HS 偏早 → 步长偏小)
     # ==============================
-    res_gyro_small = gait_to_hs_from_filtered_gyro_x_adaptive_balanced(
+    res_gyro_small = gait_to_hs_from_filtered_gyro_x_adaptive(
         left_gyr_x=arr3[:, 3],
         right_gyr_x=arr2[:, 3],
         fs=fs,
         input_unit='deg',
-        hs_balance_alpha=0.1,
+        hs_method="zero_cross",
         return_debug=True
     )
 

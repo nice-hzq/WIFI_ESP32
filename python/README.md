@@ -75,7 +75,7 @@ config.tempDir = "./temp"                      # 校准 JSON 目录
 config.originalDir = "./Data/walk_data1"       # 原始 CSV 数据目录
 config.curveDir = "./output"                   # 输出目录
 config.WORK_MODE = "lower_body"                # 工作模式: lower_body / upper_body / full_body
-config.fs = 100                                # 采样率 (Hz)
+config.fs = 50                                 # 采样率 (Hz)
 ```
 
 ### 2. 运行分析

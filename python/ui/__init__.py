@@ -48,3 +48,27 @@ MODE_ALIASES = {
     "full_body":   ["H", "T1", "T12", "L1", "L2", "L3", "R1", "R2", "R3",
                     "S1", "L4", "L5", "L6", "R4", "R5", "R6"],
 }
+
+# ============================================================
+# Joint Angle Constants
+# ============================================================
+JOINT_OPTIONS = {
+    "left_knee":  {"label": "左膝 (Left Knee)",   "proximal": "L4", "distal": "L5"},
+    "right_knee": {"label": "右膝 (Right Knee)",  "proximal": "R4", "distal": "R5"},
+    "left_ankle": {"label": "左踝 (Left Ankle)",  "proximal": "L5", "distal": "L6"},
+    "right_ankle":{"label": "右踝 (Right Ankle)", "proximal": "R5", "distal": "R6"},
+    "left_hip":   {"label": "左髋 (Left Hip)",    "proximal": "S1", "distal": "L4"},
+    "right_hip":  {"label": "右髋 (Right Hip)",   "proximal": "S1", "distal": "R4"},
+}
+
+CALIB_MODES = {
+    "lower_body_standing": "下肢站立校准",
+    "t_pose": "T-pose 全身校准",
+}
+
+CALIB_STATES = {
+    "uncalibrated": "未标定",
+    "calibrating":  "标定中...",
+    "calibrated":   "已标定 ✓",
+    "failed":       "标定失败 ✗",
+}

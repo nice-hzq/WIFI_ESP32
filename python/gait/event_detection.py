@@ -622,7 +622,7 @@ def gait_to_hs_from_filtered_gyro_x_adaptive_balanced(
 # ================================================================================================
 
 
-def compute_gait_phase_metrics_v2(res, fs=100):
+def compute_gait_phase_metrics_v2(res, fs=50):
     """
     根据 gait_to_hs_from_filtered_gyro_x(..., return_debug=True) 的输出 res，
     计算左右脚：
@@ -812,7 +812,7 @@ def compute_gait_params_from_events(left, right):
                     return float(fs_est)
         return None
 
-    def _ensure_times(side, fs=100):
+    def _ensure_times(side, fs=50):
         """
         返回 per-stride 的 cycle/stance/swing（秒），
         优先使用 side 内已有的 cycle_s/stance_s/swing_s（且长度>0），
@@ -891,7 +891,7 @@ def compute_gait_params_from_events(left, right):
     # # # --------- 1) 估计采样率 fs ---------
     # fsL = _infer_fs(left)
     # fsR = _infer_fs(right)
-    fs  = 100
+    fs  = 50
     # if fsL and fsR:
     #     fs = float(np.median([fsL, fsR]))
     # else:

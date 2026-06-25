@@ -9,7 +9,7 @@
 #define AP_IP            192, 168, 10, 1
 #define AP_GATEWAY       192, 168, 10, 1
 #define AP_SUBNET        255, 255, 255, 0
-#define AP_MAX_CLIENTS   4
+#define AP_MAX_CLIENTS   8
 #define AP_CHANNEL       1
 
 // ==========================
@@ -26,7 +26,7 @@
 // ==========================
 // 传感器配置
 // ==========================
-#define MAX_SENSORS      4
+#define MAX_SENSORS      8
 
 // ==========================
 // 时序配置

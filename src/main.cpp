@@ -155,7 +155,7 @@ void startUdpServer()
 // ==========================
 void handleUdp()
 {
-  // 批量排空所有积压的 UDP 包 —— 100Hz 双传感器不会积压
+  // 批量排空所有积压的 UDP 包 —— 50Hz 双传感器不会积压
   while (true) {
     int packetSize = udp.parsePacket();
     if (packetSize <= 0) break;  // 无更多包

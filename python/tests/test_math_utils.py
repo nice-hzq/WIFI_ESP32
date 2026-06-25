@@ -163,7 +163,7 @@ class TestMovingAvg1d(unittest.TestCase):
 
 class TestLowpass1d(unittest.TestCase):
     def test_no_error(self):
-        fs, fc = 100.0, 8.0
+        fs, fc = 50.0, 8.0
         t = np.linspace(0, 2, 200)
         x = np.sin(2 * np.pi * 2 * t) + 0.2 * np.sin(2 * np.pi * 30 * t)
         result = lowpass_1d(x, fs=fs, fc=fc)
@@ -171,14 +171,14 @@ class TestLowpass1d(unittest.TestCase):
         self.assertTrue(np.all(np.isfinite(result)))
 
     def test_preserves_low_freq(self):
-        fs, fc = 100.0, 20.0
+        fs, fc = 50.0, 20.0
         t = np.linspace(0, 1, 100)
         x = np.sin(2 * np.pi * 3 * t)
         result = lowpass_1d(x, fs=fs, fc=fc)
         self.assertGreater(np.corrcoef(x, result)[0, 1], 0.9)
 
     def test_attenuates_high_freq(self):
-        fs, fc = 100.0, 8.0
+        fs, fc = 50.0, 8.0
         t = np.linspace(0, 1, 200)
         x = np.sin(2 * np.pi * 40 * t)
         result = lowpass_1d(x, fs=fs, fc=fc)
@@ -188,33 +188,33 @@ class TestLowpass1d(unittest.TestCase):
 class TestCleanBooleanRuns(unittest.TestCase):
     def test_no_cleaning_without_params(self):
         mask = np.array([True, False, True, False, True])
-        result = clean_boolean_runs(mask, fs=100)
+        result = clean_boolean_runs(mask, fs=50)
         np.testing.assert_array_equal(result, mask)
 
     def test_remove_short_true_runs(self):
         mask = np.array([False, True, False, False, True, False])
-        result = clean_boolean_runs(mask, fs=100, min_true_s=0.03)
+        result = clean_boolean_runs(mask, fs=50, min_true_s=0.03)
         self.assertFalse(np.any(result))
 
     def test_remove_short_false_runs(self):
         mask = np.array([True, False, True, True, False, True])
-        result = clean_boolean_runs(mask, fs=100, min_false_s=0.03)
+        result = clean_boolean_runs(mask, fs=50, min_false_s=0.03)
         self.assertTrue(np.all(result))
 
     def test_keep_long_runs(self):
         mask = np.zeros(100, dtype=bool)
         mask[10:90] = True
-        result = clean_boolean_runs(mask, fs=100, min_true_s=0.5)
+        result = clean_boolean_runs(mask, fs=50, min_true_s=0.5)
         self.assertTrue(np.any(result))
 
     def test_both_thresholds(self):
         mask = np.array([True] * 5 + [False] + [True] * 50 + [False] * 2 + [True] * 5)
-        result = clean_boolean_runs(mask, fs=100, min_true_s=0.1, min_false_s=0.05)
+        result = clean_boolean_runs(mask, fs=50, min_true_s=0.1, min_false_s=0.05)
         self.assertEqual(len(result), len(mask))
 
 
 class TestFilterAcceleration(unittest.TestCase):
-    def _generate_signal(self, N=500, fs=100.0):
+    def _generate_signal(self, N=500, fs=50.0):
         t = np.linspace(0, N / fs, N)
         x = np.sin(2 * np.pi * 2 * t)
         y = np.cos(2 * np.pi * 3 * t)
@@ -223,38 +223,38 @@ class TestFilterAcceleration(unittest.TestCase):
 
     def test_basic_lowpass(self):
         acc = self._generate_signal()
-        result = filter_acceleration(acc, fs=100.0, lp_hz=10.0)
+        result = filter_acceleration(acc, fs=50.0, lp_hz=10.0)
         self.assertEqual(result.shape, acc.shape)
         self.assertTrue(np.all(np.isfinite(result)))
 
     def test_bandpass(self):
         acc = self._generate_signal(N=600)
-        result = filter_acceleration(acc, fs=100.0, lp_hz=15.0, hp_hz=0.5)
+        result = filter_acceleration(acc, fs=50.0, lp_hz=15.0, hp_hz=0.5)
         self.assertEqual(result.shape, acc.shape)
 
     def test_with_median_filter(self):
         acc = self._generate_signal()
-        result = filter_acceleration(acc, fs=100.0, lp_hz=10.0, median_win=5)
+        result = filter_acceleration(acc, fs=50.0, lp_hz=10.0, median_win=5)
         self.assertEqual(result.shape, acc.shape)
 
     def test_detrend_linear(self):
         acc = self._generate_signal() + np.array([[1.0, 2.0, 3.0]])
-        result = filter_acceleration(acc, fs=100.0, lp_hz=10.0, detrend_linear=True)
+        result = filter_acceleration(acc, fs=50.0, lp_hz=10.0, detrend_linear=True)
         self.assertEqual(result.shape, acc.shape)
 
     def test_zero_mean(self):
         acc = self._generate_signal()
-        result = filter_acceleration(acc, fs=100.0, lp_hz=10.0, zero_mean=True)
+        result = filter_acceleration(acc, fs=50.0, lp_hz=10.0, zero_mean=True)
         self.assertAlmostEqual(np.mean(result, axis=0).max(), 0.0, places=8)
 
     def test_invalid_shape_raises(self):
         with self.assertRaises(ValueError):
-            filter_acceleration(np.array([1.0, 2.0, 3.0]), fs=100.0, lp_hz=10.0)
+            filter_acceleration(np.array([1.0, 2.0, 3.0]), fs=50.0, lp_hz=10.0)
 
     def test_invalid_bandpass_raises(self):
         acc = self._generate_signal()
         with self.assertRaises(ValueError):
-            filter_acceleration(acc, fs=100.0, lp_hz=10.0, hp_hz=20.0)
+            filter_acceleration(acc, fs=50.0, lp_hz=10.0, hp_hz=20.0)
 
 
 if __name__ == "__main__":

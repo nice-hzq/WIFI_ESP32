@@ -4,8 +4,8 @@
 Main GaitAnalysisApp with state machine, session management, and queue polling.
 
 Layout: left-right split with title bar and status bar.
-Left  (320px): Data Collection | Recent Sessions | Gait Analysis
-Right (expand): Summary Cards | Result Notebook (4 tabs)
+Left  (320px): Connection | Data Collection | Gait Analysis | Joint Angle | History
+Right (expand): 6 Summary Cards (2 rows) | Result Notebook (4 tabs)
 """
 
 import os, queue, threading, time
@@ -21,8 +21,9 @@ try:
 except ImportError:
     serial = None
 
-from . import DEFAULT_BAUD, WORK_MODES, VALID_ALIASES, MODE_ALIASES, get_base_dir
-from .threads import DataCollectionThread, GaitAnalysisThread
+from . import (DEFAULT_BAUD, WORK_MODES, VALID_ALIASES, MODE_ALIASES,
+                get_base_dir, JOINT_OPTIONS, CALIB_MODES, CALIB_STATES)
+from .threads import DataCollectionThread, GaitAnalysisThread, JointAngleThread
 from .dialogs import scan_csv_folder, load_alias_map, open_mapping_dialog
 from .display import clear_results, display_results
 
@@ -102,6 +103,7 @@ class GaitAnalysisApp:
         self.queue = queue.Queue(maxsize=200)
         self.collection_thread = None
         self.analysis_thread = None
+        self.joint_thread = None          # 关节角度测量线程
         self.state = UIState.IDLE
         self.last_result = None
         self._scanned_devices = {}
@@ -110,14 +112,31 @@ class GaitAnalysisApp:
         self._session_history = []
         self._last_collection_folder = None
 
+        # ── Joint Angle state ──
+        self._joint_calib_state = "uncalibrated"  # uncalibrated | calibrating | calibrated | failed
+        self._joint_flexion_var = tk.StringVar(value="--")
+        self._joint_abduction_var = tk.StringVar(value="--")
+        self._joint_rotation_var = tk.StringVar(value="--")
+        self._joint_max_var = tk.StringVar(value="--")
+        self._joint_min_var = tk.StringVar(value="--")
+        self._joint_rom_var = tk.StringVar(value="--")
+        self._joint_history_t = []
+        self._joint_history_flexion = []
+        self._joint_history_abduction = []
+        self._joint_history_rotation = []
+
         # ── Summary card StringVars ──
         self.summary_speed_var = tk.StringVar(value="--")
         self.summary_cadence_var = tk.StringVar(value="--")
         self.summary_steps_var = tk.StringVar(value="--")
         self.summary_speed_unit = tk.StringVar(value="m/s")
+        self.summary_step_length_var = tk.StringVar(value="--")
+        self.summary_stride_time_var = tk.StringVar(value="--")
+        self.summary_gait_cycle_var = tk.StringVar(value="--")
 
         # ── Title bar status ──
         self.title_status_var = tk.StringVar(value="● 就绪")
+        self.title_info_var = tk.StringVar(value="")
 
         self._build_ui()
         self._init_button_states()
@@ -126,18 +145,55 @@ class GaitAnalysisApp:
     # ============================================================
     # UI Helpers
     # ============================================================
-    def _create_card(self, parent, title=None, **pack_opts):
-        """Create a white card Frame with optional section title."""
+    def _create_card(self, parent, title=None, collapsible=False,
+                     start_collapsed=False, **pack_opts):
+        """Create a white card Frame with optional section title.
+
+        Returns (card, content) — always pack child widgets into content.
+        When collapsible=True, clicking the title toggles content visibility.
+        """
         card = tk.Frame(parent, bg=CARD_BG, highlightbackground=BORDER,
                         highlightthickness=1, bd=0)
         card.pack(fill="x", pady=(0, 8), **pack_opts)
 
-        if title:
+        content = tk.Frame(card, bg=CARD_BG)
+
+        if title and collapsible:
+            title_frame = tk.Frame(card, bg=CARD_BG, cursor="hand2")
+            title_frame.pack(fill="x")
+
+            indicator = "▶  " if start_collapsed else "▼  "
+            title_lbl = tk.Label(title_frame, text=f"{indicator}{title}",
+                                 font=FONT_SECTION, bg=CARD_BG, fg=TEXT_MAIN,
+                                 anchor="w")
+            title_lbl.pack(fill="x", padx=12, pady=(10, 6))
+
+            card._collapsed = start_collapsed
+
+            def _toggle(e=None):
+                if card._collapsed:
+                    content.pack(fill="x")
+                    title_lbl.config(text=f"▼  {title}")
+                    card._collapsed = False
+                else:
+                    content.pack_forget()
+                    title_lbl.config(text=f"▶  {title}")
+                    card._collapsed = True
+
+            title_lbl.bind("<Button-1>", _toggle)
+            title_frame.bind("<Button-1>", _toggle)
+
+            if not start_collapsed:
+                content.pack(fill="x")
+        elif title:
             tk.Label(card, text=title, font=FONT_SECTION,
                      bg=CARD_BG, fg=TEXT_MAIN, anchor="w").pack(
                 fill="x", padx=12, pady=(10, 6))
+            content.pack(fill="x")
+        else:
+            content.pack(fill="x")
 
-        return card
+        return card, content
 
     def _make_action_btn(self, parent, text, command, bg_color, hover_color,
                          width=14):
@@ -181,24 +237,35 @@ class GaitAnalysisApp:
         return self._make_secondary_btn(parent, text, command,
                                         width=width, font=FONT_SMALL, state=state)
 
-    def _create_summary_card(self, parent, label_cn, label_en, value_var, unit_var):
-        """Create a single metric summary card. Returns the outer frame."""
+    def _create_summary_card(self, parent, label_cn, label_en, value_var, unit_var,
+                              accent_color=None):
+        """Create a single metric summary card with optional left accent strip."""
         card = tk.Frame(parent, bg=CARD_BG, highlightbackground=BORDER,
                         highlightthickness=1, bd=0)
-        card.pack(side="left", padx=(0, 8), pady=4, ipadx=12, ipady=10)
+        card.pack(side="left", padx=(0, 8), pady=4)
 
-        tk.Label(card, text=label_cn, font=FONT_BODY, bg=CARD_BG,
+        # Left accent strip
+        if accent_color:
+            accent = tk.Frame(card, bg=accent_color, width=3)
+            accent.pack(side="left", fill="y")
+
+        inner = tk.Frame(card, bg=CARD_BG)
+        inner.pack(side="left", fill="both", expand=True, padx=12, pady=10)
+
+        tk.Label(inner, text=label_cn, font=FONT_BODY, bg=CARD_BG,
                  fg=TEXT_MAIN, anchor="center").pack()
 
-        val_frame = tk.Frame(card, bg=CARD_BG)
+        val_frame = tk.Frame(inner, bg=CARD_BG)
         val_frame.pack()
+        # Use accent_color for value if provided, else PRIMARY
+        val_color = accent_color if accent_color else PRIMARY
         tk.Label(val_frame, textvariable=value_var, font=FONT_VALUE,
-                 bg=CARD_BG, fg=PRIMARY, anchor="center").pack(side="left")
+                 bg=CARD_BG, fg=val_color, anchor="center").pack(side="left")
         tk.Label(val_frame, textvariable=unit_var, font=FONT_VALUE_UNIT,
                  bg=CARD_BG, fg=TEXT_SECONDARY, anchor="s").pack(
             side="left", padx=(2, 0))
 
-        tk.Label(card, text=label_en, font=FONT_SMALL, bg=CARD_BG,
+        tk.Label(inner, text=label_en, font=FONT_SMALL, bg=CARD_BG,
                  fg=TEXT_SECONDARY, anchor="center").pack()
 
         return card
@@ -226,9 +293,11 @@ class GaitAnalysisApp:
         paned.add(right_frame)
 
         # Build left (control) cards
+        self._build_connection_card(left_frame)
         self._build_dc_card(left_frame)
-        self._build_history_card(left_frame)
         self._build_ga_card(left_frame)
+        self._build_joint_card(left_frame)
+        self._build_history_card(left_frame)
 
         # Build right (results) area
         self._build_right_panel(right_frame)
@@ -255,6 +324,12 @@ class GaitAnalysisApp:
                  font=FONT_SUBTITLE, bg=CARD_BG,
                  fg=TEXT_SECONDARY).pack(anchor="w")
 
+        # Center: real-time info (rows / devices / progress)
+        self.title_info_lbl = tk.Label(
+            title_inner, textvariable=self.title_info_var,
+            font=FONT_SMALL, bg=CARD_BG, fg=TEXT_SECONDARY)
+        self.title_info_lbl.pack(side="right", padx=(0, 12))
+
         # Right: status badge
         self.title_status_badge = tk.Label(
             title_inner, textvariable=self.title_status_var,
@@ -262,13 +337,12 @@ class GaitAnalysisApp:
             padx=12, pady=4)
         self.title_status_badge.pack(side="right")
 
-    def _build_dc_card(self, parent):
-        """Build the Data Collection card."""
-        card = self._create_card(parent, title="📡 数据采集 (Data Collection)")
+    def _build_connection_card(self, parent):
+        """Build the unified Connection card (shared serial port + baud rate)."""
+        card, content = self._create_card(parent, title="🔌 连接 (Connection)")
 
-        # Serial port row
-        conn_row = tk.Frame(card, bg=CARD_BG)
-        conn_row.pack(fill="x", padx=12, pady=(4, 6))
+        conn_row = tk.Frame(content, bg=CARD_BG)
+        conn_row.pack(fill="x", padx=12, pady=(4, 8))
 
         tk.Label(conn_row, text="串口", font=FONT_BODY, bg=CARD_BG,
                  fg=TEXT_SECONDARY, width=4, anchor="w").pack(side="left")
@@ -285,7 +359,7 @@ class GaitAnalysisApp:
 
         self.port_var = tk.StringVar(value=default_port)
         self.port_cb = ttk.Combobox(conn_row, textvariable=self.port_var,
-                                     values=available_ports, state="readonly", width=12,
+                                     values=available_ports, state="readonly", width=14,
                                      font=FONT_MONO)
         self.port_cb.pack(side="left", padx=(2, 2))
 
@@ -298,7 +372,7 @@ class GaitAnalysisApp:
                 self.port_var.set(ports[0])
 
         self._make_small_btn(conn_row, "↻", _refresh_ports, width=3).pack(
-            side="left", padx=(0, 10))
+            side="left", padx=(0, 12))
 
         tk.Label(conn_row, text="波特率", font=FONT_BODY, bg=CARD_BG,
                  fg=TEXT_SECONDARY, width=5, anchor="w").pack(side="left")
@@ -308,8 +382,13 @@ class GaitAnalysisApp:
                  relief="solid", highlightbackground=BORDER,
                  highlightthickness=1, bd=0).pack(side="left", padx=(2, 0))
 
+    def _build_dc_card(self, parent):
+        """Build the Data Collection card."""
+        card, content = self._create_card(parent, title="📡 数据采集 (Data Collection)",
+                                         collapsible=True)
+
         # Control buttons
-        btn_row = tk.Frame(card, bg=CARD_BG)
+        btn_row = tk.Frame(content, bg=CARD_BG)
         btn_row.pack(fill="x", padx=12, pady=(0, 6))
 
         self.btn_start = self._make_action_btn(
@@ -326,15 +405,95 @@ class GaitAnalysisApp:
 
         # Status
         self.dc_status_var = tk.StringVar(value="● 未连接")
-        tk.Label(card, textvariable=self.dc_status_var,
+        tk.Label(content, textvariable=self.dc_status_var,
                  font=FONT_SMALL, bg=CARD_BG, fg=TEXT_SECONDARY,
                  anchor="w").pack(fill="x", padx=12, pady=(0, 8))
 
+    def _build_joint_card(self, parent):
+        """Build the Joint Angle (real-time) card."""
+        card, content = self._create_card(parent, title="🦵 实时关节角度 (Joint Angle)",
+                                         collapsible=True, start_collapsed=True)
+
+        # ── Joint selection ──
+        sel_row = tk.Frame(content, bg=CARD_BG)
+        sel_row.pack(fill="x", padx=12, pady=(4, 4))
+        tk.Label(sel_row, text="关节", font=FONT_BODY, bg=CARD_BG,
+                 fg=TEXT_SECONDARY, width=4, anchor="w").pack(side="left")
+        self.joint_var = tk.StringVar(value="left_knee")
+        joint_keys = list(JOINT_OPTIONS.keys())
+        self.joint_cb = ttk.Combobox(sel_row, textvariable=self.joint_var,
+                                     values=joint_keys, state="readonly", width=18,
+                                     font=FONT_BODY)
+        self.joint_cb.pack(side="left", padx=2)
+        # show label instead of key
+        def _on_joint_change(*args):
+            key = self.joint_var.get()
+            info = JOINT_OPTIONS.get(key, {})
+            self._joint_prox_var.set(f"{info.get('proximal', '?')}")
+            self._joint_dist_var.set(f"{info.get('distal', '?')}")
+        self.joint_var.trace_add("write", _on_joint_change)
+
+        # ── Sensor binding display ──
+        bind_row = tk.Frame(content, bg=CARD_BG)
+        bind_row.pack(fill="x", padx=12, pady=(0, 4))
+        tk.Label(bind_row, text="近端 (Proximal):", font=FONT_SMALL, bg=CARD_BG,
+                 fg=TEXT_SECONDARY).pack(side="left")
+        self._joint_prox_var = tk.StringVar(value="L4")
+        tk.Label(bind_row, textvariable=self._joint_prox_var, font=FONT_BODY_BOLD,
+                 bg=CARD_BG, fg=PRIMARY).pack(side="left", padx=(4, 12))
+        tk.Label(bind_row, text="远端 (Distal):", font=FONT_SMALL, bg=CARD_BG,
+                 fg=TEXT_SECONDARY).pack(side="left")
+        self._joint_dist_var = tk.StringVar(value="L5")
+        tk.Label(bind_row, textvariable=self._joint_dist_var, font=FONT_BODY_BOLD,
+                 bg=CARD_BG, fg=PRIMARY).pack(side="left", padx=(4, 0))
+
+        # ── Calibration mode ──
+        cal_row = tk.Frame(content, bg=CARD_BG)
+        cal_row.pack(fill="x", padx=12, pady=(2, 2))
+        tk.Label(cal_row, text="校准", font=FONT_BODY, bg=CARD_BG,
+                 fg=TEXT_SECONDARY, width=4, anchor="w").pack(side="left")
+        self.calib_mode_var = tk.StringVar(value="lower_body_standing")
+        calib_mode_labels = list(CALIB_MODES.values())
+        calib_mode_keys = list(CALIB_MODES.keys())
+        self.calib_mode_cb = ttk.Combobox(cal_row, textvariable=self.calib_mode_var,
+                                          values=calib_mode_keys, state="readonly",
+                                          width=16, font=FONT_BODY)
+        self.calib_mode_cb.pack(side="left", padx=2)
+
+        # ── Control buttons ──
+        btn_row = tk.Frame(content, bg=CARD_BG)
+        btn_row.pack(fill="x", padx=12, pady=(4, 2))
+
+        self.btn_joint_start = self._make_action_btn(
+            btn_row, "▶  开始测量", self._start_joint, SUCCESS, SUCCESS_HOVER, width=11)
+        self.btn_joint_start.pack(side="left", padx=(0, 4))
+
+        self.btn_joint_stop = self._make_action_btn(
+            btn_row, "■  停止测量", self._stop_joint, DANGER, DANGER_HOVER, width=11)
+        self.btn_joint_stop.pack(side="left", padx=(0, 4))
+
+        self.btn_joint_calib = self._make_secondary_btn(
+            btn_row, "○ 开始校准", self._start_joint_calib, width=10)
+        self.btn_joint_calib.pack(side="left")
+
+        # ── Calibration status ──
+        self.joint_calib_status_var = tk.StringVar(value="未标定")
+        tk.Label(content, textvariable=self.joint_calib_status_var,
+                 font=FONT_SMALL, bg=CARD_BG, fg=WARNING,
+                 anchor="w").pack(fill="x", padx=12, pady=(2, 0))
+
+        # ── Measurement status ──
+        self.joint_status_var = tk.StringVar(value="● 未启动")
+        tk.Label(content, textvariable=self.joint_status_var,
+                 font=FONT_SMALL, bg=CARD_BG, fg=TEXT_SECONDARY,
+                 anchor="w").pack(fill="x", padx=12, pady=(0, 6))
+
     def _build_history_card(self, parent):
         """Build the Recent Sessions card."""
-        card = self._create_card(parent, title="📋 最近会话 (Recent Sessions)")
+        card, content = self._create_card(parent, title="📋 最近会话 (Recent Sessions)",
+                                         collapsible=True, start_collapsed=True)
 
-        list_frame = tk.Frame(card, bg=CARD_BG)
+        list_frame = tk.Frame(content, bg=CARD_BG)
         list_frame.pack(fill="x", padx=12, pady=(2, 2))
 
         self.hist_listbox = tk.Listbox(list_frame, height=3, font=FONT_MONO_SM,
@@ -346,13 +505,15 @@ class GaitAnalysisApp:
                                         highlightthickness=1,
                                         activestyle="none")
         self.hist_listbox.pack(side="left", fill="x", expand=True)
+        # Double-click to fill analysis folder
+        self.hist_listbox.bind("<Double-Button-1>", lambda e: self._use_history_folder())
 
         hist_scroll = ttk.Scrollbar(list_frame, orient="vertical",
                                      command=self.hist_listbox.yview)
         hist_scroll.pack(side="right", fill="y")
         self.hist_listbox.configure(yscrollcommand=hist_scroll.set)
 
-        btn_row = tk.Frame(card, bg=CARD_BG)
+        btn_row = tk.Frame(content, bg=CARD_BG)
         btn_row.pack(fill="x", padx=12, pady=(2, 6))
         self._make_small_btn(btn_row, "填入分析目录", self._use_history_folder,
                             width=12).pack(side="left", padx=(0, 4))
@@ -360,16 +521,17 @@ class GaitAnalysisApp:
                             width=9).pack(side="left")
 
         self.hist_status_var = tk.StringVar(value="暂无历史会话")
-        tk.Label(card, textvariable=self.hist_status_var,
+        tk.Label(content, textvariable=self.hist_status_var,
                  font=FONT_SMALL, bg=CARD_BG, fg=TEXT_SECONDARY,
                  anchor="w").pack(fill="x", padx=12, pady=(0, 6))
 
     def _build_ga_card(self, parent):
         """Build the Gait Analysis card."""
-        card = self._create_card(parent, title="🔬 步态分析 (Gait Analysis)")
+        card, content = self._create_card(parent, title="🔬 步态分析 (Gait Analysis)",
+                                         collapsible=True)
 
         # Data folder
-        folder_row = tk.Frame(card, bg=CARD_BG)
+        folder_row = tk.Frame(content, bg=CARD_BG)
         folder_row.pack(fill="x", padx=12, pady=(4, 4))
         tk.Label(folder_row, text="数据目录", font=FONT_BODY, bg=CARD_BG,
                  fg=TEXT_SECONDARY, width=7, anchor="w").pack(side="left")
@@ -386,7 +548,7 @@ class GaitAnalysisApp:
         self.btn_use_recent.pack(side="left")
 
         # Sensor mapping status
-        self.map_frame = tk.Frame(card, bg=CARD_BG)
+        self.map_frame = tk.Frame(content, bg=CARD_BG)
         self.map_status_var = tk.StringVar()
         self.map_status_lbl = tk.Label(self.map_frame, textvariable=self.map_status_var,
                                         font=FONT_SMALL, bg=CARD_BG, fg=WARNING,
@@ -396,12 +558,12 @@ class GaitAnalysisApp:
             self.map_frame, "配置传感器映射...", self._open_mapping_dialog, width=15)
 
         # Work mode + Run button
-        ctrl_row = tk.Frame(card, bg=CARD_BG)
+        ctrl_row = tk.Frame(content, bg=CARD_BG)
         ctrl_row.pack(fill="x", padx=12, pady=(2, 8))
 
         tk.Label(ctrl_row, text="工作模式", font=FONT_BODY, bg=CARD_BG,
                  fg=TEXT_SECONDARY, width=7, anchor="w").pack(side="left")
-        self.mode_var = tk.StringVar(value="lower_body")
+        self.mode_var = tk.StringVar(value="feet_only")
         self.mode_cb = ttk.Combobox(ctrl_row, textvariable=self.mode_var,
                                      values=WORK_MODES, state="readonly", width=12,
                                      font=FONT_BODY)
@@ -414,27 +576,43 @@ class GaitAnalysisApp:
 
         # Status
         self.ga_status_var = tk.StringVar(value="就绪 (Idle)")
-        tk.Label(card, textvariable=self.ga_status_var,
+        tk.Label(content, textvariable=self.ga_status_var,
                  font=FONT_SMALL, bg=CARD_BG, fg=TEXT_SECONDARY,
                  anchor="w").pack(fill="x", padx=12, pady=(0, 8))
 
     def _build_right_panel(self, parent):
         """Build the right-side results area: summary cards + notebook."""
-        # ── Summary Cards ──
-        summary_frame = tk.Frame(parent, bg=BACKGROUND)
-        summary_frame.pack(fill="x", pady=(0, 6))
+        # ── Summary Cards Row 1: 4 primary metrics ──
+        summary_row1 = tk.Frame(parent, bg=BACKGROUND)
+        summary_row1.pack(fill="x", pady=(0, 2))
 
-        self._create_summary_card(summary_frame,
+        self._create_summary_card(summary_row1,
             "步行速度", "Walking Speed",
-            self.summary_speed_var, self.summary_speed_unit)
+            self.summary_speed_var, self.summary_speed_unit, accent_color=PRIMARY)
 
-        self._create_summary_card(summary_frame,
+        self._create_summary_card(summary_row1,
             "步频", "Cadence",
-            self.summary_cadence_var, tk.StringVar(value="steps/min"))
+            self.summary_cadence_var, tk.StringVar(value="steps/min"), accent_color="#E74C3C")
 
-        self._create_summary_card(summary_frame,
+        self._create_summary_card(summary_row1,
+            "步长", "Step Length",
+            self.summary_step_length_var, tk.StringVar(value="m"), accent_color="#2ECC71")
+
+        self._create_summary_card(summary_row1,
+            "跨步时间", "Stride Time",
+            self.summary_stride_time_var, tk.StringVar(value="s"), accent_color="#3498DB")
+
+        # ── Summary Cards Row 2: 2 secondary metrics ──
+        summary_row2 = tk.Frame(parent, bg=BACKGROUND)
+        summary_row2.pack(fill="x", pady=(0, 6))
+
+        self._create_summary_card(summary_row2,
             "总步数", "Total Steps",
-            self.summary_steps_var, tk.StringVar(value="steps"))
+            self.summary_steps_var, tk.StringVar(value="steps"), accent_color=TEXT_MAIN)
+
+        self._create_summary_card(summary_row2,
+            "步态周期", "Gait Cycle",
+            self.summary_gait_cycle_var, tk.StringVar(value="s"), accent_color=TEXT_MAIN)
 
         # ── Results Notebook ──
         res_card = tk.Frame(parent, bg=CARD_BG, highlightbackground=BORDER,
@@ -446,6 +624,9 @@ class GaitAnalysisApp:
         res_toolbar.pack(fill="x", padx=8, pady=(6, 0))
         tk.Label(res_toolbar, text="📊 分析结果 (Results)", font=FONT_SECTION,
                  bg=CARD_BG, fg=TEXT_MAIN).pack(side="left")
+        self.btn_export_results = self._make_small_btn(
+            res_toolbar, "导出", self._export_results, width=6)
+        self.btn_export_results.pack(side="right", padx=(0, 4))
         self.btn_clear_results = self._make_small_btn(
             res_toolbar, "清除结果", self._clear_results_btn, width=8)
         self.btn_clear_results.pack(side="right")
@@ -453,12 +634,14 @@ class GaitAnalysisApp:
         self.notebook = ttk.Notebook(res_card)
         self.notebook.pack(fill="both", expand=True, padx=6, pady=(2, 6))
 
-        self.tab_basic = self._make_scrollable_tab("基本参数")
-        self.tab_step  = self._make_scrollable_tab("步态参数")
-        self.tab_phase = self._make_scrollable_tab("相位参数")
+        self.tab_basic, _ = self._make_scrollable_tab("基本参数")
+        self.tab_step, _  = self._make_scrollable_tab("步态参数")
+        self.tab_phase, _ = self._make_scrollable_tab("相位参数")
+        self.tab_joint, self.tab_joint_outer = self._make_scrollable_tab("关节角度")
+        self._build_joint_tab_content()
 
     def _build_status_bar(self):
-        """Build the bottom status bar."""
+        """Build the bottom status bar with progress bar."""
         status_bar = tk.Frame(self.root, bg=CARD_BG, highlightbackground=BORDER,
                               highlightthickness=1, bd=0)
         status_bar.pack(fill="x", side="bottom")
@@ -468,7 +651,139 @@ class GaitAnalysisApp:
             status_bar, textvariable=self.status_bar_var,
             anchor="w", bg=CARD_BG, fg=TEXT_SECONDARY,
             font=FONT_SMALL, padx=12, pady=3)
-        self.status_bar_label.pack(fill="x")
+        self.status_bar_label.pack(side="left", fill="x", expand=True)
+
+        # Indeterminate progress bar (shown during analysis)
+        self.status_progress = ttk.Progressbar(
+            status_bar, mode="indeterminate", length=120)
+        # Hidden by default; shown during ANALYZING / COLLECTING
+
+    def _build_joint_tab_content(self):
+        """Build the joint angle tab: 3-axis numeric display + large 3-panel curve canvas."""
+        inner = self.tab_joint
+
+        # ── 数值卡片行：三轴当前值 + ROM ──
+        val_card = tk.Frame(inner, bg=CARD_BG, highlightbackground=BORDER,
+                            highlightthickness=1, bd=0)
+        val_card.pack(fill="x", padx=8, pady=(6, 4))
+
+        axes_info = [
+            ("屈曲/伸展\nFlexion", self._joint_flexion_var, "#E74C3C"),
+            ("外展/内收\nAbduction", self._joint_abduction_var, "#2ECC71"),
+            ("内旋/外旋\nRotation", self._joint_rotation_var, "#3498DB"),
+            ("活动范围\nROM", self._joint_rom_var, PRIMARY),
+        ]
+        for label, var, color in axes_info:
+            frm = tk.Frame(val_card, bg=CARD_BG)
+            frm.pack(side="left", padx=14, pady=6)
+            tk.Label(frm, text=label, font=FONT_SMALL, bg=CARD_BG,
+                     fg=TEXT_SECONDARY, justify="center").pack()
+            val_row = tk.Frame(frm, bg=CARD_BG)
+            val_row.pack()
+            tk.Label(val_row, textvariable=var,
+                     font=("Consolas", 24, "bold"), bg=CARD_BG, fg=color).pack(side="left")
+            tk.Label(val_row, text="°", font=("Consolas", 12), bg=CARD_BG,
+                     fg=TEXT_SECONDARY).pack(side="left")
+
+        # ── 三面板曲线画布 ──
+        curve_outer = tk.Frame(inner, bg=CARD_BG, highlightbackground=BORDER,
+                               highlightthickness=1, bd=0)
+        curve_outer.pack(fill="both", expand=True, padx=8, pady=(4, 8))
+
+        self.joint_canvas_flexion = self._make_curve_canvas(curve_outer, "Flexion (屈曲/伸展)")
+        self.joint_canvas_abduction = self._make_curve_canvas(curve_outer, "Abduction (外展/内收)")
+        self.joint_canvas_rotation = self._make_curve_canvas(curve_outer, "Rotation (内旋/外旋)")
+
+        # 各面板最后绘制的关键帧
+        self._joint_last_drawn = {}
+
+    def _make_curve_canvas(self, parent, title):
+        """Create a labelled curve canvas panel. Returns the canvas widget."""
+        panel = tk.Frame(parent, bg=CARD_BG)
+        panel.pack(fill="both", expand=True, padx=2, pady=(2, 1))
+        tk.Label(panel, text=title, font=FONT_SMALL, bg=CARD_BG,
+                 fg=TEXT_SECONDARY, anchor="w").pack(padx=6, pady=(2, 0))
+        canvas = tk.Canvas(panel, bg="#FAFBFC", height=170, highlightthickness=0)
+        canvas.pack(fill="both", expand=True, padx=4, pady=(0, 4))
+        return canvas
+
+    def _draw_one_curve(self, canvas, t_list, deg_list, color, y_label="°"):
+        """Draw one angle curve on a canvas."""
+        if not t_list or not deg_list or len(deg_list) < 2:
+            canvas.delete("all")
+            canvas.create_text(200, 85, text="等待数据...", font=FONT_SMALL, fill=TEXT_SECONDARY)
+            return
+
+        w = canvas.winfo_width() or 600
+        h = canvas.winfo_height() or 170
+        pad_l, pad_r, pad_t, pad_b = 50, 20, 12, 28
+        pw = w - pad_l - pad_r
+        ph = h - pad_t - pad_b
+        if pw < 50 or ph < 20:
+            return
+
+        t0 = t_list[0]
+        t_rel = [t - t0 for t in t_list]
+        vals = deg_list
+        y_min = min(vals) - 2
+        y_max = max(vals) + 2
+        if y_max - y_min < 10:
+            mid = (y_max + y_min) / 2
+            y_min = mid - 5
+            y_max = mid + 5
+        t_max = max(t_rel) or 1
+
+        def tx(t):
+            return pad_l + (t / t_max) * pw
+        def ty(v):
+            return pad_t + (1.0 - (v - y_min) / (y_max - y_min)) * ph
+
+        canvas.delete("all")
+
+        # 水平网格
+        for i in range(5):
+            v = y_min + (y_max - y_min) * i / 4
+            y = ty(v)
+            canvas.create_line(pad_l, y, w - pad_r, y, fill="#E5E7EB", dash=(2, 3))
+            canvas.create_text(pad_l - 4, y, text=f"{v:.0f}", anchor="e",
+                               font=("Consolas", 7), fill=TEXT_SECONDARY)
+        # 零线
+        if y_min < 0 < y_max:
+            canvas.create_line(pad_l, ty(0), w - pad_r, ty(0), fill="#9CA3AF", dash=(3, 2))
+
+        # 垂直网格
+        for i in range(5):
+            t_v = t_max * i / 4
+            x = tx(t_v)
+            canvas.create_line(x, pad_t, x, h - pad_b, fill="#E5E7EB", dash=(2, 3))
+        # X 轴标签
+        canvas.create_text(w - pad_r + 4, h - pad_b + 4, text=f"{t_max:.0f}s", anchor="ne",
+                           font=("Consolas", 7), fill=TEXT_SECONDARY)
+
+        # 折线
+        if len(vals) >= 2:
+            pts = []
+            for j in range(len(vals)):
+                pts.extend([tx(t_rel[j]), ty(vals[j])])
+            if len(pts) >= 4:
+                canvas.create_line(*pts, fill=color, width=2, smooth=True)
+
+        # 图例
+        last_v = vals[-1]
+        canvas.create_text(w - pad_r, pad_t + 2, text=f"{last_v:.1f}°", anchor="ne",
+                           font=("Consolas", 9, "bold"), fill=color)
+
+    def _redraw_joint_curves(self):
+        """Redraw all 3 joint angle curve panels."""
+        t = self._joint_history_t
+        if not t or len(t) < 2:
+            return
+        self._draw_one_curve(self.joint_canvas_flexion, t,
+                             self._joint_history_flexion, "#E74C3C")
+        self._draw_one_curve(self.joint_canvas_abduction, t,
+                             self._joint_history_abduction, "#2ECC71")
+        self._draw_one_curve(self.joint_canvas_rotation, t,
+                             self._joint_history_rotation, "#3498DB")
 
     def _make_scrollable_tab(self, title):
         outer = ttk.Frame(self.notebook)
@@ -484,45 +799,53 @@ class GaitAnalysisApp:
         def _on_mousewheel(event):
             canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
         canvas.bind_all("<MouseWheel>", _on_mousewheel)
-        return inner
+        return inner, outer
 
     # ============================================================
     # Summary Cards Update
     # ============================================================
     def _update_summary_cards(self, data):
-        """Update the 4 summary cards from gait analysis result dict."""
+        """Update the 6 summary cards from gait analysis result dict."""
         bp = data.get("basicParameters", {}) if data else {}
+        sp = data.get("stepParameters", {}) if data else {}
 
-        # Walking speed — average of left/right
-        ws = bp.get("walkingSpeed", {})
-        if isinstance(ws, dict):
-            ws_l = ws.get("left", 0) or 0
-            ws_r = ws.get("right", 0) or 0
-            ws_val = (ws_l + ws_r) / 2 if (ws_l or ws_r) else 0
-        else:
-            ws_val = ws or 0
+        def _avg_lr(d, key, default=0):
+            """Extract left/right average from a nested dict or scalar."""
+            entry = d.get(key, {})
+            if isinstance(entry, dict):
+                l = entry.get("left", 0) or 0
+                r = entry.get("right", 0) or 0
+                return (l + r) / 2 if (l or r) else default
+            return entry or default
 
+        # Walking speed
+        ws_val = _avg_lr(bp, "walkingSpeed")
         # Cadence
-        cd = bp.get("cadence", {})
-        if isinstance(cd, dict):
-            cd_l = cd.get("left", 0) or 0
-            cd_r = cd.get("right", 0) or 0
-            cd_val = (cd_l + cd_r) / 2 if (cd_l or cd_r) else 0
-        else:
-            cd_val = cd or 0
-
+        cd_val = _avg_lr(bp, "cadence")
         # Total steps
         ts_val = bp.get("totalSteps", 0) or 0
+        # Step length (from stepParameters)
+        sl_val = _avg_lr(sp, "stepLength")
+        # Stride time (from basicParameters)
+        st_val = _avg_lr(bp, "strideTime")
+        # Gait cycle
+        gc_val = bp.get("gaitCycle", 0) or 0
 
         self.summary_speed_var.set(f"{ws_val:.2f}")
         self.summary_cadence_var.set(f"{cd_val:.0f}")
         self.summary_steps_var.set(f"{ts_val}")
+        self.summary_step_length_var.set(f"{sl_val:.2f}")
+        self.summary_stride_time_var.set(f"{st_val:.2f}")
+        self.summary_gait_cycle_var.set(f"{gc_val:.2f}")
 
     def _reset_summary_cards(self):
         """Reset summary cards to placeholder."""
         self.summary_speed_var.set("--")
         self.summary_cadence_var.set("--")
         self.summary_steps_var.set("--")
+        self.summary_step_length_var.set("--")
+        self.summary_stride_time_var.set("--")
+        self.summary_gait_cycle_var.set("--")
 
     def _update_title_status(self, text, badge_bg, badge_fg):
         """Update title bar status badge text and colors."""
@@ -537,6 +860,10 @@ class GaitAnalysisApp:
             "■  停止采集", "■  停止采集", DANGER, DANGER_MUTED)
         self._set_action_btn_state(self.btn_analyze, True,
             "▶  运行步态分析", "▶  运行步态分析", PRIMARY, PRIMARY_MUTED)
+        self._set_action_btn_state(self.btn_joint_start, True,
+            "▶  开始测量", "▶  开始测量", SUCCESS, SUCCESS_MUTED)
+        self._set_action_btn_state(self.btn_joint_stop, False,
+            "■  停止测量", "■  停止测量", DANGER, DANGER_MUTED)
 
     # ============================================================
     # State Transitions
@@ -546,6 +873,9 @@ class GaitAnalysisApp:
         self.state = new_state
 
         if new_state == UIState.IDLE:
+            self.title_info_var.set("")
+            self.status_progress.stop()
+            self.status_progress.pack_forget()
             self._set_action_btn_state(self.btn_start, True,
                 "▶  开始采集", "▶  开始采集", SUCCESS, SUCCESS_MUTED)
             self._set_action_btn_state(self.btn_stop, False,
@@ -554,8 +884,13 @@ class GaitAnalysisApp:
             self._set_action_btn_state(self.btn_analyze, True,
                 "▶  运行步态分析", "▶  运行步态分析", PRIMARY, PRIMARY_MUTED)
             self.btn_clear_results.config(state="normal")
+            self.btn_export_results.config(state="normal")
             self.btn_use_recent.config(
                 state="normal" if self._last_collection_folder else "disabled")
+            self._set_action_btn_state(self.btn_joint_start, True,
+                "▶  开始测量", "▶  开始测量", SUCCESS, SUCCESS_MUTED)
+            self._set_action_btn_state(self.btn_joint_stop, False,
+                "■  停止测量", "■  停止测量", DANGER, DANGER_MUTED)
 
         elif new_state == UIState.COLLECTING:
             self._set_action_btn_state(self.btn_start, False,
@@ -567,6 +902,10 @@ class GaitAnalysisApp:
                 "▶  运行步态分析", "▶  运行步态分析", PRIMARY, PRIMARY_MUTED)
             self.btn_clear_results.config(state="disabled")
             self.btn_use_recent.config(state="disabled")
+            self._set_action_btn_state(self.btn_joint_start, False,
+                "▶  开始测量", "▶  开始测量", SUCCESS, SUCCESS_MUTED)
+            self._set_action_btn_state(self.btn_joint_stop, False,
+                "■  停止测量", "■  停止测量", DANGER, DANGER_MUTED)
             self._update_title_status("● 采集中", BADGE_BLUE_BG, BADGE_BLUE_TEXT)
 
         elif new_state == UIState.STOPPING:
@@ -586,7 +925,11 @@ class GaitAnalysisApp:
             self._set_action_btn_state(self.btn_analyze, False,
                 "▶  运行步态分析", "⏳ 分析中...", PRIMARY, PRIMARY_MUTED, muted_fg="#1E40AF")
             self.btn_clear_results.config(state="disabled")
+            self.btn_export_results.config(state="disabled")
             self._update_title_status("⏳ 分析中", BADGE_BLUE_BG, BADGE_BLUE_TEXT)
+            # Show progress bar
+            self.status_progress.pack(side="right", padx=(0, 12), pady=3)
+            self.status_progress.start(10)
 
     # ============================================================
     # Session Management
@@ -605,6 +948,7 @@ class GaitAnalysisApp:
 
         self.last_result = None
         self._clear_all_results()
+        self._joint_reset_display()
         self._reset_summary_cards()
         self.dc_status_var.set("● 未连接")
         self.ga_status_var.set("就绪 (Idle)")
@@ -614,13 +958,35 @@ class GaitAnalysisApp:
     def _clear_results_btn(self):
         """Clear results tab contents without affecting other state."""
         self._clear_all_results()
+        self._joint_reset_display()
         self._reset_summary_cards()
         self.last_result = None
         self.ga_status_var.set("就绪 (Idle) — 结果已清除")
         self.status_bar_var.set("结果已清除")
 
+    def _export_results(self):
+        """Export analysis results to a JSON text file."""
+        if self.last_result is None:
+            messagebox.showwarning("无数据", "没有分析结果可导出。")
+            return
+        filepath = filedialog.asksaveasfilename(
+            title="导出分析结果",
+            defaultextension=".json",
+            filetypes=[("JSON files", "*.json"), ("Text files", "*.txt"),
+                       ("All files", "*.*")])
+        if not filepath:
+            return
+        import json
+        try:
+            with open(filepath, "w", encoding="utf-8") as f:
+                json.dump(self.last_result, f, ensure_ascii=False, indent=2)
+            self.status_bar_var.set(f"结果已导出 → {os.path.basename(filepath)}")
+        except Exception as e:
+            messagebox.showerror("导出失败", str(e))
+
     def _clear_all_results(self):
         clear_results(self.tab_basic, self.tab_step, self.tab_phase)
+        self._clear_joint_tab()
 
     def _add_session_history(self, folder, total_rows, devices):
         """Record a completed collection session in history."""
@@ -784,22 +1150,33 @@ class GaitAnalysisApp:
         if self.state != UIState.COLLECTING:
             return
         self._transition_to(UIState.STOPPING)
-        self.collection_thread.stop()
-        self.dc_status_var.set("● 正在停止...")
-        self.status_bar_var.set("正在停止数据采集...")
+        # Stop whichever thread is running
+        if self.collection_thread:
+            self.collection_thread.stop()
+            self.dc_status_var.set("● 正在停止...")
+            self.status_bar_var.set("正在停止数据采集...")
+        elif self.joint_thread:
+            self.joint_thread.stop()
+            self.joint_status_var.set("● 正在停止...")
+            self.status_bar_var.set("正在停止关节测量...")
 
         self._watchdog_id = self.root.after(8000, self._force_reset_if_stuck)
 
     def _force_reset_if_stuck(self):
         """Watchdog: if thread hasn't reported 'done' by now, force state reset."""
         if self.state == UIState.STOPPING:
-            self.dc_status_var.set("⚠ 停止超时，强制复位")
-            self.status_bar_var.set("警告: 采集线程未响应，已强制复位")
-            self._on_collection_done({
-                "total_rows": 0,
-                "devices": {},
-                "folder": self._last_collection_folder or "",
-            })
+            if self.collection_thread:
+                self.dc_status_var.set("⚠ 停止超时，强制复位")
+                self.status_bar_var.set("警告: 采集线程未响应，已强制复位")
+                self._on_collection_done({
+                    "total_rows": 0,
+                    "devices": {},
+                    "folder": self._last_collection_folder or "",
+                })
+            elif self.joint_thread:
+                self.joint_status_var.set("⚠ 停止超时，强制复位")
+                self.status_bar_var.set("警告: 关节测量线程未响应，已强制复位")
+                self._on_joint_done()
         self._watchdog_id = None
 
     def _on_collection_done(self, data):
@@ -822,6 +1199,133 @@ class GaitAnalysisApp:
 
         self._update_title_status("● 就绪", BADGE_GREEN_BG, BADGE_GREEN_TEXT)
         self._transition_to(UIState.IDLE)
+
+    # ============================================================
+    # Joint Angle Actions
+    # ============================================================
+    def _start_joint(self):
+        """Start real-time joint angle measurement."""
+        if self.state != UIState.IDLE:
+            messagebox.showwarning("操作冲突", "请先停止当前操作（采集/分析）再启动关节测量。")
+            return
+        port = self.port_var.get().strip()
+        if not port:
+            messagebox.showwarning("输入错误", "请选择串口")
+            return
+        try:
+            baud = int(self.baud_var.get().strip())
+        except ValueError:
+            baud = DEFAULT_BAUD
+
+        joint_key = self.joint_var.get()
+        info = JOINT_OPTIONS.get(joint_key, JOINT_OPTIONS["left_knee"])
+        script_dir = get_base_dir()
+        calib_dir = os.path.join(script_dir, "temp")
+
+        self._transition_to(UIState.COLLECTING)
+        self.joint_status_var.set(f"● 连接中... {port}")
+        self.status_bar_var.set("关节角度测量启动中...")
+        self._joint_reset_display()
+
+        # Auto-switch to joint angle tab for live curves
+        self.notebook.select(self.tab_joint_outer)
+        self._joint_calib_state = "uncalibrated"
+        self._update_joint_calib_status()
+
+        self._clear_joint_tab()
+
+        self.joint_thread = JointAngleThread(
+            port, baud, joint_key, self.queue, calib_dir)
+        self.joint_thread.start()
+
+    def _stop_joint(self):
+        """Stop joint angle measurement."""
+        if self.joint_thread is None:
+            return
+        self.joint_thread.stop()
+        self.joint_status_var.set("● 正在停止...")
+        self.status_bar_var.set("正在停止关节测量...")
+
+    def _start_joint_calib(self):
+        """Request calibration (thread must be running and alive)."""
+        if self.joint_thread is None or not self.joint_thread.is_alive():
+            messagebox.showwarning("未启动", "请先启动关节角度测量，等待初始化完成后再校准。")
+            self._joint_calib_state = "uncalibrated"
+            self._update_joint_calib_status()
+            return
+        self._joint_calib_state = "calibrating"
+        self._update_joint_calib_status()
+        mode = self.calib_mode_var.get()
+        self.joint_thread.start_calibration(mode)
+        self.status_bar_var.set(f"正在标定 ({mode})，请保持静止站立...")
+
+    def _joint_reset_display(self):
+        self._joint_flexion_var.set("--")
+        self._joint_abduction_var.set("--")
+        self._joint_rotation_var.set("--")
+        self._joint_max_var.set("--")
+        self._joint_min_var.set("--")
+        self._joint_rom_var.set("--")
+        self._joint_history_t.clear()
+        self._joint_history_flexion.clear()
+        self._joint_history_abduction.clear()
+        self._joint_history_rotation.clear()
+
+    def _update_joint_calib_status(self):
+        state = self._joint_calib_state
+        label = CALIB_STATES.get(state, state)
+        if state == "calibrated":
+            color = SUCCESS
+        elif state in ("calibrating",):
+            color = WARNING
+        elif state == "failed":
+            color = DANGER
+        else:
+            color = WARNING
+        self.joint_calib_status_var.set(label)
+        # Update button state
+        if state in ("calibrating",):
+            self.btn_joint_calib.config(state="disabled")
+        else:
+            self.btn_joint_calib.config(state="normal")
+
+    def _clear_joint_tab(self):
+        for w in self.tab_joint.winfo_children():
+            w.destroy()
+        self._build_joint_tab_content()
+
+    def _on_joint_done(self):
+        self.joint_thread = None
+        self.joint_status_var.set("● 已停止")
+        self.status_bar_var.set("关节角度测量已停止")
+        self._update_title_status("● 就绪", BADGE_GREEN_BG, BADGE_GREEN_TEXT)
+        self._transition_to(UIState.IDLE)
+
+    def _on_joint_angle_data(self, data):
+        flex = data.get("flexion_deg", 0)
+        abd = data.get("abduction_deg", 0)
+        rot = data.get("rotation_deg", 0)
+        self._joint_flexion_var.set(f"{flex:.1f}")
+        self._joint_abduction_var.set(f"{abd:.1f}")
+        self._joint_rotation_var.set(f"{rot:.1f}")
+        self._joint_max_var.set(f"{data.get('max_deg', 0):.1f}")
+        self._joint_min_var.set(f"{data.get('min_deg', 0):.1f}")
+        self._joint_rom_var.set(f"{data.get('rom_deg', 0):.1f}")
+
+        # Update curve histories (3 axes)
+        self._joint_history_t = data.get("history_t", [])
+        self._joint_history_flexion = data.get("history_flexion", [])
+        self._joint_history_abduction = data.get("history_abduction", [])
+        self._joint_history_rotation = data.get("history_rotation", [])
+
+        # 重绘所有曲线
+        self._redraw_joint_curves()
+
+        # Status update
+        cal = "✓" if data.get("calibrated") else "✗"
+        init = "✓" if data.get("initialized") else "⏳"
+        self.joint_status_var.set(f"● 测量中  |  校准:{cal}  初始化:{init}  "
+                                  f"|  屈伸:{flex:.1f}°  外展:{abd:.1f}°  旋转:{rot:.1f}°")
 
     # ============================================================
     # Gait Analysis Actions
@@ -922,6 +1426,9 @@ class GaitAnalysisApp:
                     dev_str = ", ".join(f"{k}: {v}" for k, v in devices.items())
                     self.dc_status_var.set(f"● 采集中  |  总行数: {total}  |  {dev_str}")
                     self.status_bar_var.set(f"数据采集: {total} 行")
+                    # Update title bar info
+                    dev_count = len(devices)
+                    self.title_info_var.set(f"{total} 行 | {dev_count} 设备")
 
                 elif mt == "done":
                     self._on_collection_done(msg)
@@ -939,6 +1446,48 @@ class GaitAnalysisApp:
                 elif mt == "gait_error":
                     self._on_gait_error(msg)
 
+                # ── Joint Angle messages ──
+                elif mt == "joint_status":
+                    state = msg.get("state", "")
+                    if state == "connected":
+                        self.joint_status_var.set(f"● 已连接  |  {msg.get('message', '')}")
+                    elif state == "calibrated":
+                        self._joint_calib_state = "calibrated"
+                        self._update_joint_calib_status()
+                    elif state == "uncalibrated":
+                        self._joint_calib_state = "uncalibrated"
+                        self._update_joint_calib_status()
+                    elif state == "disconnected":
+                        self.joint_status_var.set(f"✗ {msg.get('message', '')}")
+                        self._on_joint_done()
+                    self.status_bar_var.set(msg.get("message", ""))
+
+                elif mt == "joint_angle":
+                    self._on_joint_angle_data(msg)
+
+                elif mt == "joint_calib_status":
+                    self.joint_status_var.set(f"◌ {msg.get('message', '')}")
+
+                elif mt == "joint_calib_done":
+                    self._joint_calib_state = "calibrated"
+                    self._update_joint_calib_status()
+                    self.status_bar_var.set(msg.get("message", "标定完成"))
+                    self.joint_status_var.set(f"✓ 标定完成 — {msg.get('joint', '')}")
+
+                elif mt == "joint_calib_error":
+                    self._joint_calib_state = "failed"
+                    self._update_joint_calib_status()
+                    self.status_bar_var.set(f"标定失败: {msg.get('message', '')}")
+
+                elif mt == "joint_error":
+                    self.joint_status_var.set(f"✗ {msg.get('message', '')}")
+                    self.status_bar_var.set("关节角度测量错误")
+                    tb = msg.get("traceback", "")
+                    detail = f"{msg.get('message', '')}\n\n{tb}" if tb else msg.get('message', '')
+                    self._on_joint_done()
+                    # 弹窗显示详细错误
+                    messagebox.showerror("关节测量错误", detail)
+
         except queue.Empty:
             pass
         self.root.after(100, self._poll_queue)
@@ -947,4 +1496,7 @@ class GaitAnalysisApp:
         if self.state == UIState.COLLECTING and self.collection_thread:
             self.collection_thread.stop()
             self.collection_thread = None
+        if self.joint_thread:
+            self.joint_thread.stop()
+            self.joint_thread = None
         self.root.destroy()

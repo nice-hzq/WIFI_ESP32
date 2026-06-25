@@ -10,7 +10,7 @@ from scipy.signal import butter, filtfilt, find_peaks, peak_widths, medfilt
 
 
 def gait_from_feet_gyro_x(
-    left_gyr_x, right_gyr_x, fs=100,
+    left_gyr_x, right_gyr_x, fs=50,
     hp_cut=0.3, lp_cut=8.0,
     min_step_s=0.40, max_step_s=1.5,
     ms_height_abs_rad=0.8,
@@ -233,7 +233,7 @@ def gait_from_feet_gyro_x(
         'left':  _detect_one(left_gyr_x),
         'right': _detect_one(right_gyr_x),
     }
-def _mahony_quats_from_array(arr, fs=100, kp=1.5, ki=0.05, use_mag=True,
+def _mahony_quats_from_array(arr, fs=50, kp=1.5, ki=0.05, use_mag=True,
                              normalize_with_quat=True, ref_index=0, gyro_unit='rad',
                              yaw_max_rate_dps=180.0):
     """
@@ -411,7 +411,7 @@ def count_steps_during_turns(arr1, fs, turn_windows_s,
     return result
 
 def detect_turn_segments_waist(
-    yaw_deg_cont, fs=100,
+    yaw_deg_cont, fs=50,
     # —— 累计转角窗口与阈值（腰部传感器关键）——
     angle_win_s=1.00,            # 计算累计转角的滑动窗口长度（秒）
     angle_thr_on=35.0,           # 进入转身：窗口内累计转角 ≥ 该阈值（度）

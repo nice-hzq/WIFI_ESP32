@@ -64,7 +64,7 @@ def extract_flexion_angle_from_quat(
 #         aliases=["S1", "R6", "L6"]
 #     )
 #
-# mgr = QuaternionManager(fs=100)
+# mgr = QuaternionManager(fs=50)
 #
 # # 步态用：脚部建议先关磁力计（抗干扰更稳）
 # mgr.add_node("L_foot", use_mag=False, kp= 1, ki = 0.005)
@@ -145,5 +145,5 @@ def extract_flexion_angle_from_quat(
 #     euler_L,
 #     euler_R,
 #     euler_W,
-#     fs=100,
+#     fs=50,
 # )
