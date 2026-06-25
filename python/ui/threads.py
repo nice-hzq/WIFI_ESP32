@@ -416,7 +416,7 @@ class JointAngleThread(threading.Thread):
     # ---- Main ----
     def _run_impl(self):
         from joint import JointAngleEngine, JointCalibration, JOINT_DEFS
-        from joint.joint_calibration import save_calibration, load_calibration
+        from joint.joint_calibration import save_calibration
         from joint.joint_angle import online_calibrate_from_buffers
         from ui import JOINT_OPTIONS
         import json
@@ -441,17 +441,9 @@ class JointAngleThread(threading.Thread):
         engine = JointAngleEngine(binding, fs=50.0)
         self._engine = engine
 
-        # 尝试加载已有标定
-        try:
-            calib = load_calibration(self.joint_key, self.calib_dir)
-            if calib.is_valid():
-                engine.load_calibration(calib)
-                self._calib = calib
-                self._post("joint_status", state="calibrated",
-                           message=f"已加载标定: {self.joint_key}")
-        except FileNotFoundError:
-            self._post("joint_status", state="uncalibrated",
-                       message="未找到标定文件，请先校准")
+        # 每次测量都需要重新校准，不自动加载旧标定文件
+        self._post("joint_status", state="uncalibrated",
+                   message="未标定 — 引擎就绪后请保持静止站立并点击「开始校准」")
 
         # ---- 打开串口 ----
         self._post("joint_status", state="connecting",
