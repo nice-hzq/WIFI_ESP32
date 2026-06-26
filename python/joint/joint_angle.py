@@ -49,8 +49,8 @@ class JointAngleEngine:
             use_mag=False,
             acc_unit="g",
             gyr_unit="deg",
-            kp=0.8,
-            ki=1e-5,
+            kp=0.5,
+            ki=0.1,
         )
         self._node_dist = MahonyOrientationNode(
             name=f"{binding.joint_name}_dist",
@@ -58,8 +58,8 @@ class JointAngleEngine:
             use_mag=False,
             acc_unit="g",
             gyr_unit="deg",
-            kp=0.8,
-            ki=1e-5,
+            kp=0.5,
+            ki=0.1,
         )
 
         self._initialized = False
@@ -95,9 +95,9 @@ class JointAngleEngine:
             init_data_p = np.array(self._init_buffer_p[-self._init_frames:], dtype=float)
             init_data_d = np.array(self._init_buffer_d[-self._init_frames:], dtype=float)
             self._node_prox.init_from_static(imu9=init_data_p, n_first=0,
-                                             n_init=self._init_frames, estimate_gyro_bias=False)
+                                             n_init=self._init_frames, estimate_gyro_bias=True)
             self._node_dist.init_from_static(imu9=init_data_d, n_first=0,
-                                             n_init=self._init_frames, estimate_gyro_bias=False)
+                                             n_init=self._init_frames, estimate_gyro_bias=True)
             self._initialized = True
             # 注意：不清空 _init_buffer（标定可能需要用），但后续不再增长
             print(f"[JOINT] {self.binding.joint_name}: Mahony 自动初始化完成 "

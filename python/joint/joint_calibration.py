@@ -165,8 +165,8 @@ def _run_mahony(imu9: np.ndarray, fs: float) -> np.ndarray:
         use_mag=False,
         acc_unit="g",
         gyr_unit="deg",
-        kp=0.8,
-        ki=1e-5,
+        kp=0.5,
+        ki=0.1,
     )
     node.init_from_static(
         imu9=imu9,

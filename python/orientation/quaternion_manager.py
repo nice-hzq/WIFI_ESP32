@@ -162,8 +162,8 @@ class MahonyOrientationNode:
         use_mag: bool = False,
         acc_unit: str = "g",     # "g" or "mps2"
         gyr_unit: str = "deg",   # "deg" or "rad"
-        kp: float = 1,
-        ki: float = 0.05,        # 你的 ahrs 版本要求必须 > 0
+        kp: float = 0.5,
+        ki: float = 0.1,         # 零偏在线估计 — 原 0.05 过小导致收敛极慢
         q0: np.ndarray | None = None,   # ✅ 设为可选
         gyro_bias: np.ndarray| None = None,
     ):
@@ -176,7 +176,8 @@ class MahonyOrientationNode:
         self.ki = float(ki) if float(ki) > 0.0 else 1e-6
         self.gyro_bias = np.zeros(3) if gyro_bias is None else np.asarray(gyro_bias, float)
 
-        self.filter = Mahony(frequency=self.fs, k_P=self.kp, k_I=self.ki)
+        self.filter = Mahony(frequency=self.fs, k_P=self.kp, k_I=self.ki,
+                            b0=self.gyro_bias.copy())
 
         if q0 is None:
             self.q = np.array([1.0, 0.0, 0.0, 0.0], dtype=float)
@@ -210,7 +211,8 @@ class MahonyOrientationNode:
         """
         acc3, gyr3, mag3 = self._prep_units(acc3, gyr3, mag3)
 
-        # ✅ 扣掉静止估计的陀螺偏置
+        # 注意：陀螺零偏由 Mahony 滤波器内部 b 估计处理（已通过 b0 注入初始值）
+        # 不在此处做外部减法，避免与 filter.b 叠加导致双重扣除
 
         if self.use_mag and mag3 is not None:
             q_new = self.filter.updateMARG(self.q, gyr=gyr3, acc=acc3, mag=mag3)
@@ -286,6 +288,8 @@ class MahonyOrientationNode:
         # ===== 陀螺零偏（可选）=====
         if estimate_gyro_bias:
             self.gyro_bias = w.mean(axis=0)
+            # 同步注入 Mahony 滤波器内部零偏估计，加速收敛
+            self.filter.b = self.gyro_bias.copy()
 
         return self.q
 

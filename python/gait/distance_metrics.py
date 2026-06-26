@@ -645,14 +645,14 @@ def run_spatial_pipeline_from_arrays(arr2, arr3, res_gyro, fs=50):
         use_mag=False,
         acc_unit="g",
         gyr_unit="deg",
-        kp=0.8,
-        ki=1e-5,
+        kp=0.5,
+        ki=0.1,
     )
     node_R.init_from_static(
         imu9=arr2,
         n_first=init_n_first,
         n_init=init_n_end,
-        estimate_gyro_bias=False,
+        estimate_gyro_bias=True,
     )
     mgr.add_existing_node(node_R)
     Q_R = mgr.run_batch({"R_foot": arr2})
@@ -664,14 +664,14 @@ def run_spatial_pipeline_from_arrays(arr2, arr3, res_gyro, fs=50):
         use_mag=False,
         acc_unit="g",
         gyr_unit="deg",
-        kp=0.8,
-        ki=1e-5,
+        kp=0.5,
+        ki=0.1,
     )
     node_L.init_from_static(
         imu9=arr3,
         n_first=init_n_first,
         n_init=init_n_end,
-        estimate_gyro_bias=False,
+        estimate_gyro_bias=True,
     )
     mgr.add_existing_node(node_L)
     Q_L = mgr.run_batch({"L_foot": arr3})
