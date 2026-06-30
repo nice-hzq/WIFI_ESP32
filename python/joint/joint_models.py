@@ -16,6 +16,14 @@ import numpy as np
 # ============================================================
 # 预设关节定义
 # ============================================================
+#
+# 角度极性约定:
+#   flexion (+)  = 屈膝 (knee bending)   |  flexion (-) = 伸膝
+#   abduction (+) = 外展 (away from body)  |  abduction (-) = 内收
+#   rotation (+)  = 外旋 (external)        |  rotation (-)  = 内旋 (internal)
+#
+# flexion_axis = 0 → roll = 屈伸主轴（绕传感器 X 轴旋转）
+#
 JOINT_DEFS = {
     "left_knee": {
         "name": "左膝",
@@ -160,7 +168,7 @@ class JointAngleState:
     timestamp: float = 0.0
 
     # ── 时间序列缓存（用于画曲线）──
-    max_history: int = 3600          # 3600 帧 @ 50Hz = 72 秒缓冲（降采样后 10Hz→12 帧/秒 = 60s 显示）
+    max_history: int = 3600          # 3600 帧 @ 100Hz 降采样 20Hz = 180 秒缓冲
     history_t: List[float] = field(default_factory=list)
     history_flexion: List[float] = field(default_factory=list)
     history_abduction: List[float] = field(default_factory=list)

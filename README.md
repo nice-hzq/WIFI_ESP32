@@ -84,6 +84,11 @@ WIFI_ESP32/
 │   │   ├── quaternions.py             # QuaternionManager (多节点管理)
 │   │   └── euler_angles.py            # 四元数→欧拉角, 绘图工具
 │   │
+│   ├── joint/                            # 实时关节角度测量
+│   │   ├── joint_models.py             # 关节绑定/标定/角度状态数据模型
+│   │   ├── joint_angle.py              # JointAngleEngine — 双 IMU 相对姿态引擎
+│   │   └── joint_calibration.py        # 静止站立标定: q_rel_0 计算
+│   │
 │   ├── gait/                            # 步态分析管线
 │   │   ├── gait_pipeline.py            # 主入口: 调度完整分析流程
 │   │   ├── event_detection.py          # HS/TO/MS 步态事件检测 (自适应 gyro)
@@ -167,20 +172,22 @@ WIFI_ESP32/
 | 50–51 | 2 | 固件版本 | 小端 int16 |
 | 52–53 | 2 | 保留 | — |
 
-**CSV 输出格式（14 列）：**
+**CSV 输出格式（16 列）：**
 
 ```csv
-device_id,timestamp,acc_x,acc_y,acc_z,gyro_x,gyro_y,gyro_z,angle_x,angle_y,angle_z,mag_x,mag_y,mag_z
+device_id,sensor_timestamp,sensor_ms,esp32_rx_ms,acc_x,acc_y,acc_z,gyro_x,gyro_y,gyro_z,angle_x,angle_y,angle_z,mag_x,mag_y,mag_z
 ```
 
-| 列 | 字段 | 单位 |
-|----|------|------|
-| 1 | device_id | — |
-| 2 | timestamp | `YYYY-MM-DD HH:MM:SS.mmm`（ESP32 millis 同步） |
-| 3–5 | acc_x, acc_y, acc_z | g |
-| 6–8 | gyro_x, gyro_y, gyro_z | °/s |
-| 9–11 | angle_x, angle_y, angle_z | ° |
-| 12–14 | mag_x, mag_y, mag_z | 原始值 |
+| 列 | 字段 | 单位 | 说明 |
+|----|------|------|------|
+| 0 | device_id | — | 传感器唯一标识 |
+| 1 | sensor_timestamp | — | WT901 原始时间 `20YY-MM-DD HH:MM:SS.mmm` |
+| 2 | sensor_ms | ms | 当天毫秒数（检查采样稳定性） |
+| 3 | esp32_rx_ms | ms | ESP32 `millis()` 接收时间（多传感器时间对齐基准） |
+| 4-6 | acc_x, acc_y, acc_z | g | 加速度，量程 ±16g |
+| 7-9 | gyro_x, gyro_y, gyro_z | °/s | 角速度，量程 ±2000°/s |
+| 10-12 | angle_x, angle_y, angle_z | ° | WT901 内部解算角度 |
+| 13-15 | mag_x, mag_y, mag_z | 原始值 | 磁场强度 |
 
 ### 多传感器管理
 
@@ -369,12 +376,88 @@ CSV 加载 → 校准(gyro bias + acc 6-face) → 滤波(moving avg)
 
 ---
 
+## 实时膝关节角度测量 (Real-time Knee Angle)
+
+### 功能概述
+
+系统支持通过两个 WT901WIFI 传感器（大腿 + 小腿）实时测量膝关节角度。核心采用四元数相对姿态方法，而非简单欧拉角相减。
+
+### 角度计算公式
+
+```
+q_rel_t   = inv(q_thigh) * q_shank              # 当前大腿→小腿相对姿态
+q_joint_t = inv(q_rel_0) * q_rel_t              # 标定补偿（站立零点校准）
+flexion   = euler_from_quat(q_joint_t)[roll]    # 屈伸角（主运动轴）
+```
+
+### 角度极性约定
+
+| 方向 | 正值 (+) | 负值 (-) |
+|------|---------|---------|
+| Flexion (roll) | 屈膝 knee bending | 伸膝 knee extension |
+| Abduction (pitch) | 外展 away from midline | 内收 toward midline |
+| Rotation (yaw) | 外旋 external rotation | 内旋 internal rotation |
+
+### 传感器安装
+
+| 传感器 | 别名 | 身体部位 | 方向参考 |
+|--------|------|---------|---------|
+| Proximal (近端) | L4 / R4 | 大腿 Thigh | X 轴沿大腿骨指向膝关节 |
+| Distal (远端) | L5 / R5 | 小腿 Shank | X 轴沿小腿骨指向踝关节 |
+
+### 校准流程
+
+1. 正确安装传感器到大腿和小腿
+2. 启动测量 → 等待引擎自动初始化（约 2 秒静止）
+3. 保持静止站立 → 点击「开始校准」
+4. 系统记录 3 秒静止数据 → 计算 `q_rel_0` 作为零点参考
+5. 标定完成后，关节角度显示相对于站立姿态的屈伸角度
+6. 停止测量时自动保存到 `joint_csv/joint_angle_YYYYMMDD_HHMMSS/`
+
+### 实时帧同步
+
+基于 `esp32_rx_ms` 的近邻匹配策略：
+- 以远端传感器最新帧为锚点
+- 在近端传感器缓冲区中查找 `esp32_rx_ms` 最接近的帧
+- 最大允许时间差：**30 ms**（≈3 帧 @ 100 Hz）
+- 超过阈值时丢弃当前配对，跳过本次角度计算
+
+### 姿态解算
+
+| 参数 | 值 |
+|------|----|
+| 算法 | Mahony 互补滤波器 (AHRS 库) |
+| 采样率 | 100 Hz (dt = 0.01 s) |
+| kp (比例增益) | 0.5 |
+| ki (积分增益) | 0.1 |
+| 磁力计 | 关闭（避免室内磁干扰） |
+| 初始化 | 200 帧自动静止初始化 + 陀螺零偏估计 |
+
+### 异常检测
+
+- NaN/Inf 值过滤
+- 加速度模长范围检查（0.3g ~ 3.5g）
+- 传感器数据超时告警（> 1 秒无新数据）
+
+### 输出
+
+停止测量后自动保存到：
+
+```
+joint_csv/joint_angle_YYYYMMDD_HHMMSS/
+├── joint_angle_data.csv          # 时间 / 屈伸角 / 外展内收角 / 旋转角
+└── session_info.json             # 关节配置、标定信息、ROM 统计
+```
+
+---
+
 ## 技术特性
 
 | 特性 | 说明 |
 |------|------|
 | 多传感器管理 | ESP32 按源 IP 独立帧组装，最多 8 传感器并发 |
-| 时间同步 | ESP32 millis() 覆盖传感器时间，多传感器共享时间基准 |
+| 时间同步 | ESP32 millis() 双时间戳 (sensor_ms + esp32_rx_ms)，离线 CSV 线性插值同步 |
+| 实时关节角度 | Mahony 解算 + 四元数相对姿态 + esp32_rx_ms 近邻帧匹配 |
 | 双检测器平均 | platform HS + zero_cross HS 分别估计空间参数后取平均 |
 | 自适应事件检测 | 基于局部步态周期比例 + 鲁棒 scale 的 HS/TO/MS 检测 |
 | ZUPT 漂移校正 | 摆动段首尾零速约束 + 线性去漂移 |
@@ -392,30 +475,35 @@ CSV 加载 → 校准(gyro bias + acc 6-face) → 滤波(moving avg)
 │                                                          │
 │ WT901WiFi(s) ──UDP──► per-IP sessions ──► WT901Data     │
 │                                          ├──► Serial USB │
+│                                          │   [DATA]...   │
 │                                          └──► TCP :8888  │
-└──────────────────────────────────────────────────────────┘
-                           │
-                           ▼
-┌──────────────────────────────────────────────────────────┐
-│ csv_receiver.py                                          │
-│                                                          │
-│ Serial ──► [DATA] filter ──► per-device CSV files        │
-│                              wt901_data_<ts>/             │
-└──────────────────────────────────────────────────────────┘
-                           │
-                           ▼
-┌──────────────────────────────────────────────────────────┐
-│ Python Gait Pipeline                                     │
-│                                                          │
-│ CSV files ──► calibrate ──► Mahony quat ──► Euler        │
-│                          ├──► HS/TO detect               │
-│                          ├──► acc rotate → world         │
-│                          ├──► ZUPT → vel/pos             │
-│                          ├──► spatial metrics            │
-│                          ├──► temporal metrics           │
-│                          ├──► turn detection             │
-│                          └──► JSON report + PNG curves   │
-└──────────────────────────────────────────────────────────┘
+└──────────────────────┬───────────────────────────────────┘
+                       │
+          ┌────────────┴────────────┐
+          ▼                         ▼
+┌──────────────────────┐  ┌──────────────────────────┐
+│ (离线) csv_receiver  │  │ (实时) JointAngleThread  │
+│                      │  │                          │
+│ [DATA] filter        │  │ 近邻帧同步 (esp32_rx_ms) │
+│ per-device CSV files │  │ Mahony × 2 姿态解算      │
+│ wt901_data_<ts>/     │  │ q_knee=inv(q_thigh)*q_s  │
+└──────────┬───────────┘  │ q_rel_0 标定补偿         │
+           │              │ 实时曲线 + 数值显示       │
+           ▼              └──────────┬───────────────┘
+┌──────────────────────┐            │
+│ Python Gait Pipeline │            ▼
+│                      │  ┌──────────────────────────┐
+│ CSV → calibrate →    │  │ joint_csv/               │
+│ Mahony → Euler →     │  │  joint_angle_<ts>/       │
+│ HS/TO detect →       │  │  ├── joint_angle_data.csv│
+│ ZUPT → spatial →     │  │  └── session_info.json   │
+│ temporal → report    │  └──────────────────────────┘
+└──────────┬───────────┘
+           │
+  output/ ◄┘
+  ├── attitude_*.png
+  ├── gait_events_debug.png
+  └── JSON report
 ```
 
 ## 许可证

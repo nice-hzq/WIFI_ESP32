@@ -26,7 +26,7 @@ def get_base_dir():
 DEFAULT_BAUD = 921600
 SERIAL_RETRY_DELAY = 1.0
 CSV_HEADER = [
-    "device_id", "timestamp",
+    "device_id", "sensor_timestamp", "sensor_ms", "esp32_rx_ms",
     "Acc_x", "Acc_y", "Acc_z",
     "Gyr_x", "Gyr_y", "Gyr_z",
     "Angle_x", "Angle_y", "Angle_z",
@@ -52,6 +52,20 @@ MODE_ALIASES = {
 # ============================================================
 # Joint Angle Constants
 # ============================================================
+#
+# 角度极性约定 (Angle Polarity Convention):
+#   flexion (+)  = 屈膝 / knee flexion (bending)
+#   flexion (-)  = 伸膝 / knee extension (straightening, hyperextension)
+#   abduction (+)  = 外展 / away from midline
+#   abduction (-)  = 内收 / toward midline
+#   rotation (+)   = 外旋 / external rotation
+#   rotation (-)   = 内旋 / internal rotation
+#
+# 传感器安装方向约定:
+#   大腿 IMU: 传感器 X 轴沿大腿骨方向指向膝关节
+#   小腿 IMU: 传感器 X 轴沿小腿骨方向指向踝关节
+#   （理想情况下两传感器坐标系应近似平行，标定时 q_rel_0 的 roll≈0°）
+#
 JOINT_OPTIONS = {
     "left_knee":  {"label": "左膝 (Left Knee)",   "proximal": "L4", "distal": "L5",
                    "prox_label": "大腿 (Thigh)", "dist_label": "小腿 (Shank)"},

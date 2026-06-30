@@ -40,21 +40,29 @@ uint32_t sensorFrameCount[MAX_SENSORS] = {0};
 // ==========================
 // CSV 输出一行
 // ==========================
-void outputCSVRow(const WT901Data& data)
+// esp32RxMs: ESP32 millis() 接收时间（帧解析完成时刻），用于多传感器统一时间轴对齐
+void outputCSVRow(const WT901Data& data, uint32_t esp32RxMs)
 {
-  // 格式化时间戳: "20YY-MM-DD HH:MM:SS.mmm"
-  char timestamp[48];
-  snprintf(timestamp, sizeof(timestamp),
+  // 1. WT901 原始时间戳字符串: "20YY-MM-DD HH:MM:SS.mmm"
+  char sensorTimestamp[48];
+  snprintf(sensorTimestamp, sizeof(sensorTimestamp),
            "20%02d-%02d-%02d %02d:%02d:%02d.%03d",
            (int)data.year, (int)data.month, (int)data.day,
            (int)data.hour, (int)data.minute, (int)data.second, (int)data.millisecond);
 
-  // 格式化 CSV 行（14 列）
-  // device_id,timestamp,acc_x,acc_y,acc_z,gyro_x,gyro_y,gyro_z,angle_x,angle_y,angle_z,mag_x,mag_y,mag_z
-  char csvLine[256];
+  // 2. WT901 原始时间换算为当天毫秒数（用于检查传感器自身采样稳定性）
+  uint32_t sensorMs = (uint32_t)data.hour   * 3600000UL
+                    + (uint32_t)data.minute * 60000UL
+                    + (uint32_t)data.second * 1000UL
+                    + (uint32_t)data.millisecond;
+
+  // 3. 格式化 CSV 行（16 列）
+  // device_id,sensor_timestamp,sensor_ms,esp32_rx_ms,acc_x,acc_y,acc_z,
+  //   gyro_x,gyro_y,gyro_z,angle_x,angle_y,angle_z,mag_x,mag_y,mag_z
+  char csvLine[320];
   snprintf(csvLine, sizeof(csvLine),
-           "%s,%s,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f",
-           data.deviceId, timestamp,
+           "%s,%s,%u,%u,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f",
+           data.deviceId, sensorTimestamp, sensorMs, esp32RxMs,
            data.accX, data.accY, data.accZ,
            data.gyroX, data.gyroY, data.gyroZ,
            data.angleX, data.angleY, data.angleZ,
@@ -151,7 +159,7 @@ void startUdpServer()
 }
 
 // ==========================
-// 接收并分发 UDP 数据（批量排空 + ESP32 统一时间戳）
+// 接收并分发 UDP 数据（批量排空 + 双时间戳记录）
 // ==========================
 void handleUdp()
 {
@@ -183,14 +191,10 @@ void handleUdp()
             sensorFrameCount[sessionIdx]++;
           }
 
-          // ---- ESP32 统一时间戳 ---- //
-          // 用 ESP32 millis() 覆盖传感器原始时间，使多传感器共享同一时间基准
-          uint32_t t = millis();
-          parsed.hour        = (t / 3600000UL) % 24;
-          parsed.minute      = (t / 60000UL) % 60;
-          parsed.second      = (t / 1000UL) % 60;
-          parsed.millisecond  = t % 1000;
-          // year/month/day 保留传感器值（ESP32 无 RTC）
+          // ---- 记录 ESP32 接收时间（不覆盖 WT901 原始时间）---- //
+          // esp32RxMs 用于上位机多传感器统一时间轴对齐
+          // 传感器原始时间保持不动，供上位机检查采样稳定性
+          uint32_t esp32RxMs = millis();
 
           // 首次成功解析时缓存 deviceId
           if (!s->deviceIdKnown) {
@@ -203,7 +207,7 @@ void handleUdp()
           }
 
           // 输出 CSV 行
-          outputCSVRow(parsed);
+          outputCSVRow(parsed, esp32RxMs);
         }
       }
     }

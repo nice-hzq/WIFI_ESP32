@@ -132,6 +132,19 @@ class JointAngleEngine:
         imu_p = np.asarray(imu9_proximal, dtype=float).flatten()
         imu_d = np.asarray(imu9_distal,   dtype=float).flatten()
 
+        # 异常数据检测
+        if np.any(np.isnan(imu_p)) or np.any(np.isinf(imu_p)):
+            return self.state.flexion_deg if self._initialized else 0.0
+        if np.any(np.isnan(imu_d)) or np.any(np.isinf(imu_d)):
+            return self.state.flexion_deg if self._initialized else 0.0
+        # 加速度模长合理性检查
+        acc_norm_p = float(np.linalg.norm(imu_p[0:3]))
+        acc_norm_d = float(np.linalg.norm(imu_d[0:3]))
+        if acc_norm_p < 0.3 or acc_norm_p > 3.5:
+            return self.state.flexion_deg if self._initialized else 0.0
+        if acc_norm_d < 0.3 or acc_norm_d > 3.5:
+            return self.state.flexion_deg if self._initialized else 0.0
+
         # ★ 持久环形缓冲（始终记录，供在线标定使用）
         self._add_to_rolling(imu_p, imu_d)
 

@@ -1585,8 +1585,11 @@ class GaitAnalysisApp:
                 elif mt == "joint_calib_done":
                     self._joint_calib_state = "calibrated"
                     self._update_joint_calib_status()
+                    euler0 = msg.get("euler_rel_0", [0, 0, 0])
+                    diag = (f"标定完成 ✓  |  Roll(屈伸)={euler0[0]:.1f}°  "
+                            f"Pitch(外展)={euler0[1]:.1f}°  Yaw(旋转)={euler0[2]:.1f}°")
                     self.status_bar_var.set(msg.get("message", "标定完成"))
-                    self.joint_status_var.set(f"✓ 标定完成 — {msg.get('joint', '')}")
+                    self.joint_status_var.set(diag)
 
                 elif mt == "joint_calib_error":
                     self._joint_calib_state = "failed"

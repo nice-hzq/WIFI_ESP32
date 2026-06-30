@@ -281,10 +281,18 @@ class JointAngleThread(threading.Thread):
     独立占用串口，运行 Mahony 解算 + 双 IMU 相对姿态 → 关节角度。
     与 DataCollectionThread 互斥（共用同一个 COM 口时不能同时运行）。
 
+    数据通道: 当前仅支持 Serial（COM 口）接收 ESP32 [DATA] 行。
+    未来可选支持 TCP (ESP32 TCP :8888) 直连，使数据采集与关节测量可并行运行。
+
     设备识别:
       - 接受 device_map: {device_id: sensor_alias} 用于识别近端/远端传感器
       - device_map 为空时尝试从 calib_dir/device_alias_map.json 加载
       - 仍未匹配时按传感器上线顺序自动分配（第一个=近端，第二个=远端）
+
+    帧同步策略:
+      - 以远端传感器最新帧的 esp32_rx_ms 为锚点
+      - 在近端传感器缓冲区中近邻匹配时间最接近的帧
+      - 最大允许时间差 = 30 ms（可配置 _max_sync_dt_ms）
     """
 
     def __init__(self, serial_port, baud, joint_key, status_queue, calib_dir,
@@ -311,11 +319,16 @@ class JointAngleThread(threading.Thread):
         self._buffer = b""
         self._joint_save_path = None        # 会话数据保存路径
         self._warned_uncalib = False        # 是否已提示需要校准
-        # device_id → buffer (用于自动识别和标定)
-        self._device_bufs: dict = {}     # {device_id: [imu9_frames]}
+        # device_id → buffer (用于自动识别、标定和帧同步)
+        self._device_bufs: dict = {}     # {device_id: [(imu9, esp32_rx_ms), ...]}
         self._device_detected: list = []  # 按上线顺序记录的 device_id 列表
         self._prox_id: str = None        # 识别后的近端 device_id
         self._dist_id: str = None        # 识别后的远端 device_id
+
+        # 帧同步配置
+        self._max_sync_dt_ms = 30         # 最大允许帧同步时间差（毫秒）
+        self._sensor_timeout_ms = 1000    # 传感器数据超时阈值（毫秒）
+        self._last_frame_time: dict = {}  # {device_id: time.time()} 各传感器最后数据到达时间
 
     def stop(self):
         self._stop_event.set()
@@ -396,16 +409,40 @@ class JointAngleThread(threading.Thread):
             return
 
     def _get_engine_inputs(self):
-        """从设备缓冲区取最近一帧近端和远端 IMU 数据"""
+        """近邻匹配取一对时间同步的 IMU 帧。
+
+        以远端传感器最新帧的 esp32_rx_ms 为锚点，
+        在近端传感器缓冲区中查找时间最接近的一帧。
+        若最小时间差超过 self._max_sync_dt_ms 则返回 (None, None)，
+        本次跳过不计算关节角度。
+        """
         if not self._prox_id or not self._dist_id:
             return None, None
         if self._prox_id not in self._device_bufs or self._dist_id not in self._device_bufs:
             return None, None
-        if len(self._device_bufs[self._prox_id]) == 0 or len(self._device_bufs[self._dist_id]) == 0:
+        buf_p = self._device_bufs[self._prox_id]
+        buf_d = self._device_bufs[self._dist_id]
+        if len(buf_p) == 0 or len(buf_d) == 0:
             return None, None
-        # 取各自最新帧
-        imu_p = self._device_bufs[self._prox_id][-1]
-        imu_d = self._device_bufs[self._dist_id][-1]
+
+        # 远端最新帧作为锚点 (imu9, esp32_rx_ms)
+        imu_d, t_d = buf_d[-1]
+
+        # 在近端缓冲区中查找 esp32_rx_ms 最接近的一帧
+        best_idx = 0
+        best_dt = abs(buf_p[0][1] - t_d)
+        for i in range(1, len(buf_p)):
+            dt = abs(buf_p[i][1] - t_d)
+            if dt < best_dt:
+                best_dt = dt
+                best_idx = i
+
+        # 最大允许时间差检查（默认 30 ms，≈3 帧 @ 100 Hz）
+        max_dt = getattr(self, '_max_sync_dt_ms', 30)
+        if best_dt > max_dt:
+            return None, None
+
+        imu_p = buf_p[best_idx][0]  # 取出 imu9（不含时间戳）
         return imu_p, imu_d
 
     # ---- Calibration command (called via queue from UI) ----
@@ -438,7 +475,7 @@ class JointAngleThread(threading.Thread):
         }
         from joint.joint_models import JointBinding
         binding = JointBinding(**binding_info)
-        engine = JointAngleEngine(binding, fs=50.0)
+        engine = JointAngleEngine(binding, fs=100.0)
         self._engine = engine
 
         # 每次测量都需要重新校准，不自动加载旧标定文件
@@ -485,14 +522,31 @@ class JointAngleThread(threading.Thread):
                 if not csv_content:
                     continue
                 row = csv_content.split(",")
-                if len(row) < 14:
+                if len(row) < 16:
                     continue
                 device_id = row[0].strip()
 
-                # 提取 IMU9
+                # 提取 esp32_rx_ms 和 IMU9 原始数据
+                # CSV 列: device_id(0), sensor_timestamp(1), sensor_ms(2), esp32_rx_ms(3),
+                #          acc_x(4), acc_y(5), acc_z(6),
+                #          gyro_x(7), gyro_y(8), gyro_z(9),
+                #          angle_x(10), angle_y(11), angle_z(12),
+                #          mag_x(13), mag_y(14), mag_z(15)
                 try:
-                    imu9 = np.array([float(row[i]) for i in range(2, 2+9)], dtype=float)
+                    esp32_rx_ms = int(row[3])
+                    acc = np.array([float(row[4]), float(row[5]), float(row[6])], dtype=float)
+                    gyr = np.array([float(row[7]), float(row[8]), float(row[9])], dtype=float)
+                    mag = np.array([float(row[13]), float(row[14]), float(row[15])], dtype=float)
+                    imu9 = np.concatenate([acc, gyr, mag])  # (9,) = [ax,ay,az, gx,gy,gz, mx,my,mz]
                 except (ValueError, IndexError):
+                    continue
+
+                # 异常数据检测
+                if np.any(np.isnan(imu9)) or np.any(np.isinf(imu9)):
+                    continue
+                acc_norm = float(np.linalg.norm(acc))
+                if acc_norm < 0.3 or acc_norm > 3.5:
+                    # 加速度模长异常（静止≈1.0g，运动+冲击≤3.5g）
                     continue
 
                 # 记录设备上线
@@ -503,7 +557,9 @@ class JointAngleThread(threading.Thread):
                     self._post("joint_status", state="device_detected",
                                message=f"检测到设备: {device_id} → {alias}",
                                device_id=device_id, alias=alias)
-                self._device_bufs[device_id].append(imu9)
+                # 存储 (imu9, esp32_rx_ms) 元组，供近邻帧同步使用
+                self._device_bufs[device_id].append((imu9, esp32_rx_ms))
+                self._last_frame_time[device_id] = time.time()
                 # 限制缓冲大小
                 if len(self._device_bufs[device_id]) > 500:
                     self._device_bufs[device_id] = self._device_bufs[device_id][-500:]
@@ -526,17 +582,17 @@ class JointAngleThread(threading.Thread):
                                 self._post("joint_status", state="waiting_calib",
                                            message="引擎已就绪，请保持静止站立后点击「开始校准」")
                         else:
-                            # 每 5 帧发一次（50Hz→10Hz），大幅减少 queue 流量
+                            # 每 5 帧发一次（100Hz→约20Hz），大幅减少 queue 流量
                             frame_count = getattr(self, '_angle_frame_count', 0) + 1
                             self._angle_frame_count = frame_count
                             if frame_count % 5 == 0:
-                                # 降采样: 50Hz 存储 → 每 5 帧取 1 (10Hz)，取最近 600 点 = 60 秒
+                                # 降采样: 100Hz 存储 → 每 5 帧取 1 (约20Hz)，取最近 1200 点 = 60 秒
                                 step = 5
                                 t_raw = state.history_t
                                 f_raw = state.history_flexion
                                 a_raw = state.history_abduction
                                 r_raw = state.history_rotation
-                                n_ds = min(600, len(t_raw) // step)
+                                n_ds = min(1200, len(t_raw) // step)
                                 self._post("joint_angle",
                                            joint=self.joint_key,
                                            flexion_deg=round(state.flexion_deg, 2),
@@ -558,15 +614,19 @@ class JointAngleThread(threading.Thread):
                     last_device_report = now
                     if self._device_detected:
                         dev_info = []
+                        timeout_ms = getattr(self, '_sensor_timeout_ms', 1000)
                         for did in self._device_detected:
                             alias = self._resolve_device(did) or "?"
                             buf_n = len(self._device_bufs.get(did, []))
+                            last_t = self._last_frame_time.get(did, 0)
+                            age_s = now - last_t if last_t else 999
                             role = ""
                             if did == self._prox_id:
                                 role = f"→{self.proximal_alias}({self.proximal_label})"
                             elif did == self._dist_id:
                                 role = f"→{self.distal_alias}({self.distal_label})"
-                            dev_info.append(f"{did}({alias}){role} buf={buf_n}")
+                            timeout_flag = " ⚠超时" if age_s > timeout_ms / 1000.0 else ""
+                            dev_info.append(f"{did}({alias}){role} buf={buf_n} age={age_s:.1f}s{timeout_flag}")
                         self._post("joint_status", state="devices",
                                    message=" | ".join(dev_info))
                     else:
@@ -579,7 +639,7 @@ class JointAngleThread(threading.Thread):
                     mode = self._pending_calib_mode
                     # 检查缓冲区大小
                     rp, rd = engine.get_rolling_buffer_sizes()
-                    need = int(round(3.0 * 50))
+                    need = int(round(3.0 * 100))
                     if rp < need or rd < need:
                         self._post("joint_calib_error",
                                    message=f"缓冲数据不足: {self.proximal_label}={rp} {self.distal_label}={rd} 帧, "
@@ -592,9 +652,24 @@ class JointAngleThread(threading.Thread):
                         save_calibration(calib, self.calib_dir)
                         engine.load_calibration(calib)
                         self._calib = calib
+
+                        # 标定诊断：计算 q_rel_0 的欧拉角供用户验证传感器安装方向
+                        from core.quaternion import quat_to_euler
+                        q0 = np.array(calib.q_rel_0, dtype=float)
+                        euler0 = quat_to_euler(q0, degrees=True)
+                        diag_msg = (
+                            f"标定完成: {mode}\n"
+                            f"q_rel_0 = [{q0[0]:.4f}, {q0[1]:.4f}, {q0[2]:.4f}, {q0[3]:.4f}]\n"
+                            f"安装姿态: Roll(屈伸)={euler0[0]:.1f}°  "
+                            f"Pitch(外展)={euler0[1]:.1f}°  "
+                            f"Yaw(旋转)={euler0[2]:.1f}°\n"
+                            f"（站立时 knee angle=0°，传感器轴间夹角应接近 0°）"
+                        )
                         self._post("joint_calib_done",
                                    joint=self.joint_key,
-                                   message=f"标定完成: {mode}")
+                                   message=diag_msg,
+                                   q_rel_0=q0.tolist(),
+                                   euler_rel_0=[float(euler0[0]), float(euler0[1]), float(euler0[2])])
                     except Exception as e:
                         self._post("joint_calib_error",
                                    message=f"标定失败: {e}")
