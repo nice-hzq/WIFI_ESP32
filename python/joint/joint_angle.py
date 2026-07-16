@@ -122,6 +122,7 @@ class JointAngleEngine:
     def update(self,
                imu9_proximal: np.ndarray,   # (9,) 近端传感器一帧
                imu9_distal: np.ndarray,      # (9,) 远端传感器一帧
+               timestamp_s: float = None,    # 已同步的传感器时间；缺省时使用系统时间
                ) -> float:
         """
         输入一帧 IMU 数据，返回当前屈伸角（度）。
@@ -165,7 +166,7 @@ class JointAngleEngine:
 
         # ---- 关节角计算 ----
         flexion, abduction, rotation = self._compute_all_angles(q_prox, q_dist)
-        self.state.update(flexion, abduction, rotation)
+        self.state.update(flexion, abduction, rotation, t=timestamp_s)
 
         return flexion
 

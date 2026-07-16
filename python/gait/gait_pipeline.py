@@ -21,7 +21,6 @@ import time, json, math
 import numpy as np
 from gait.count_phase import _mahony_quats_from_array, detect_turn_segments_waist, gait_from_feet_gyro_x, count_steps_during_turns
 from report.gait_models import *
-from output.attitude_curves import save_attitude_curves
 
 
 def run_gait_pipeline(
@@ -110,6 +109,9 @@ def run_gait_pipeline(
     # =====================================================
     if config.curveDir:
         try:
+            # 姿态曲线是可选输出。旧版本仓库可能不包含该绘图模块，
+            # 因此必须延迟导入，不能让可选功能阻断整个步态分析。
+            from output.attitude_curves import save_attitude_curves
             # 过滤掉 None 的数据
             valid_data = {k: v for k, v in arr_map.items() if v is not None}
             save_attitude_curves(

@@ -113,7 +113,8 @@ class JointCalibration:
 
     def is_valid(self) -> bool:
         q = np.array(self.q_rel_0, dtype=float)
-        return len(q) == 4 and np.linalg.norm(q) > 0.5
+        # numpy 的比较结果是 np.bool_，不能直接由 json.dump 序列化。
+        return bool(len(q) == 4 and np.linalg.norm(q) > 0.5)
 
     def to_dict(self) -> dict:
         return {
@@ -161,8 +162,8 @@ class JointAngleState:
     rotation_deg: float = 0.0      # yaw   — 内旋/外旋
 
     # ── 屈伸 ROM ──
-    max_flexion_deg: float = 0.0
-    min_flexion_deg: float = 0.0
+    max_flexion_deg: float = -180.0
+    min_flexion_deg: float = 180.0
     rom_deg: float = 0.0
 
     timestamp: float = 0.0

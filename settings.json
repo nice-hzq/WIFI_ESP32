@@ -1,0 +1,8 @@
+{
+  "serial_port": "COM8",
+  "baud": 921600,
+  "sample_rate_hz": 50.0,
+  "output_root": "D:\\project\\ESP_32\\WIFI_ESP32\\data",
+  "device_map": {},
+  "use_magnetometer": true
+}

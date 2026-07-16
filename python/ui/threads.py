@@ -27,6 +27,16 @@ def sanitize_filename(name: str) -> str:
     return safe.strip("_") or "unknown_device"
 
 
+def signed_u32_delta_ms(lhs, rhs) -> int:
+    """返回两个 ESP32 millis() 时间戳的有符号差，正确处理 32 位回绕。"""
+    delta = (int(lhs) - int(rhs)) & 0xFFFFFFFF
+    return delta - 0x100000000 if delta > 0x7FFFFFFF else delta
+
+
+def abs_u32_delta_ms(lhs, rhs) -> int:
+    return abs(signed_u32_delta_ms(lhs, rhs))
+
+
 # ============================================================
 # Data Collection Thread
 # ============================================================
@@ -287,11 +297,11 @@ class JointAngleThread(threading.Thread):
     设备识别:
       - 接受 device_map: {device_id: sensor_alias} 用于识别近端/远端传感器
       - device_map 为空时尝试从 calib_dir/device_alias_map.json 加载
-      - 仍未匹配时按传感器上线顺序自动分配（第一个=近端，第二个=远端）
+      - 映射不完整时不启动测量，避免近端/远端因上线顺序而互换
 
     帧同步策略:
-      - 以远端传感器最新帧的 esp32_rx_ms 为锚点
-      - 在近端传感器缓冲区中近邻匹配时间最接近的帧
+      - 以远端传感器最早待处理帧的 esp32_rx_ms 为锚点
+      - 在近端传感器缓冲区中一对一近邻匹配，匹配后立即消费
       - 最大允许时间差 = 30 ms（可配置 _max_sync_dt_ms）
     """
 
@@ -318,6 +328,11 @@ class JointAngleThread(threading.Thread):
         self._calib = None
         self._buffer = b""
         self._joint_save_path = None        # 会话数据保存路径
+        self._joint_raw_save_path = None    # 会话传感器原始数据保存路径
+        self._session_timestamp = time.strftime("%Y%m%d_%H%M%S")
+        self._raw_writers = {}              # {device_id: {file, writer, rows, path}}
+        self._raw_total_rows = 0
+        self._raw_save_failed = False
         self._warned_uncalib = False        # 是否已提示需要校准
         # device_id → buffer (用于自动识别、标定和帧同步)
         self._device_bufs: dict = {}     # {device_id: [(imu9, esp32_rx_ms), ...]}
@@ -329,6 +344,16 @@ class JointAngleThread(threading.Thread):
         self._max_sync_dt_ms = 30         # 最大允许帧同步时间差（毫秒）
         self._sensor_timeout_ms = 1000    # 传感器数据超时阈值（毫秒）
         self._last_frame_time: dict = {}  # {device_id: time.time()} 各传感器最后数据到达时间
+        self._sync_matched_count = 0
+        self._sync_drop_prox_count = 0
+        self._sync_drop_dist_count = 0
+        self._sync_dt_sum_ms = 0.0
+        self._sync_dt_max_ms = 0.0
+        self._pair_last_ms = None
+        self._pair_elapsed_ms = 0
+        self._last_matched_wall_time = None
+        self._calibrated_wall_time = None
+        self._calibrated_match_start = 0
 
     def stop(self):
         self._stop_event.set()
@@ -375,7 +400,7 @@ class JointAngleThread(threading.Thread):
     def _identify_sensors(self):
         """
         尝试识别近端和远端传感器。
-        优先使用 device_map；若映射不足则按上线顺序自动分配。
+        仅使用显式 device_map，避免因设备上线顺序变化而交换大腿/小腿。
         """
         if self._prox_id and self._dist_id:
             return  # 已识别
@@ -396,54 +421,121 @@ class JointAngleThread(threading.Thread):
                        proximal_alias=self.proximal_alias, distal_alias=self.distal_alias)
             return
 
-        # 方法2：按上线顺序自动分配（前两个设备）
-        if len(self._device_detected) >= 2:
-            self._prox_id = self._device_detected[0]
-            self._dist_id = self._device_detected[1]
-            self._post("joint_status", state="identified",
-                       message=f"自动分配: {self.proximal_alias}={self._prox_id}, "
-                               f"{self.distal_alias}={self._dist_id} "
-                               f"(未找到 device_alias_map.json，按上线顺序)",
-                       proximal_id=self._prox_id, distal_id=self._dist_id,
-                       proximal_alias=self.proximal_alias, distal_alias=self.distal_alias)
-            return
-
     def _get_engine_inputs(self):
-        """近邻匹配取一对时间同步的 IMU 帧。
-
-        以远端传感器最新帧的 esp32_rx_ms 为锚点，
-        在近端传感器缓冲区中查找时间最接近的一帧。
-        若最小时间差超过 self._max_sync_dt_ms 则返回 (None, None)，
-        本次跳过不计算关节角度。
-        """
+        """一对一近邻匹配 IMU 帧，已匹配帧不会被再次使用。"""
         if not self._prox_id or not self._dist_id:
-            return None, None
+            return None, None, None, None, None, None
         if self._prox_id not in self._device_bufs or self._dist_id not in self._device_bufs:
-            return None, None
+            return None, None, None, None, None, None
         buf_p = self._device_bufs[self._prox_id]
         buf_d = self._device_bufs[self._dist_id]
-        if len(buf_p) == 0 or len(buf_d) == 0:
-            return None, None
-
-        # 远端最新帧作为锚点 (imu9, esp32_rx_ms)
-        imu_d, t_d = buf_d[-1]
-
-        # 在近端缓冲区中查找 esp32_rx_ms 最接近的一帧
-        best_idx = 0
-        best_dt = abs(buf_p[0][1] - t_d)
-        for i in range(1, len(buf_p)):
-            dt = abs(buf_p[i][1] - t_d)
-            if dt < best_dt:
-                best_dt = dt
-                best_idx = i
-
-        # 最大允许时间差检查（默认 30 ms，≈3 帧 @ 100 Hz）
         max_dt = getattr(self, '_max_sync_dt_ms', 30)
-        if best_dt > max_dt:
-            return None, None
 
-        imu_p = buf_p[best_idx][0]  # 取出 imu9（不含时间戳）
-        return imu_p, imu_d
+        while buf_p and buf_d:
+            dist_entry = buf_d[0]
+            imu_d, t_d = dist_entry[:2]
+            raw_d = dist_entry[2] if len(dist_entry) > 2 else None
+            best_idx = min(range(len(buf_p)),
+                           key=lambda i: abs_u32_delta_ms(buf_p[i][1], t_d))
+            best_dt = abs_u32_delta_ms(buf_p[best_idx][1], t_d)
+
+            if best_dt <= max_dt:
+                prox_entry = buf_p.pop(best_idx)
+                imu_p = prox_entry[0]
+                raw_p = prox_entry[2] if len(prox_entry) > 2 else None
+                buf_d.pop(0)
+                # 比已配对近端帧更早的帧不可能再匹配后续远端帧。
+                if best_idx:
+                    del buf_p[:best_idx]
+                    self._sync_drop_prox_count += best_idx
+                self._sync_matched_count += 1
+                self._sync_dt_sum_ms += best_dt
+                self._sync_dt_max_ms = max(self._sync_dt_max_ms, best_dt)
+                self._last_matched_wall_time = time.time()
+                return (imu_p, imu_d, self._unwrap_pair_time(t_d), best_dt,
+                        raw_p, raw_d)
+
+            newest_p_delta = signed_u32_delta_ms(buf_p[-1][1], t_d)
+            if newest_p_delta > max_dt:
+                # 近端数据已经越过此远端帧；该远端帧无法再匹配。
+                buf_d.pop(0)
+                self._sync_drop_dist_count += 1
+                continue
+
+            # 近端缓冲中的过旧帧不可能与当前或后续远端帧匹配。
+            old_count = 0
+            while buf_p and signed_u32_delta_ms(buf_p[0][1], t_d) < -max_dt:
+                buf_p.pop(0)
+                old_count += 1
+            self._sync_drop_prox_count += old_count
+            break
+
+        return None, None, None, None, None, None
+
+    def _unwrap_pair_time(self, timestamp_ms) -> float:
+        """把 ESP32 uint32 millis() 展开为单调递增的会话秒数。"""
+        current = int(timestamp_ms) & 0xFFFFFFFF
+        if self._pair_last_ms is None:
+            self._pair_last_ms = current
+            self._pair_elapsed_ms = 0
+        else:
+            delta = (current - self._pair_last_ms) & 0xFFFFFFFF
+            if delta <= 0x7FFFFFFF:
+                self._pair_elapsed_ms += delta
+                self._pair_last_ms = current
+        return self._pair_elapsed_ms / 1000.0
+
+    def _project_root(self):
+        """返回 WIFI_ESP32 项目根目录。"""
+        return os.path.dirname(os.path.dirname(os.path.abspath(self.calib_dir)))
+
+    def _record_raw_row(self, row):
+        """记录一行已用于输出关节角度的同步原始传感器数据。"""
+        if self._raw_save_failed or len(row) < len(CSV_HEADER):
+            return
+        device_id = row[0].strip()
+        if not device_id:
+            return
+
+        try:
+            if device_id not in self._raw_writers:
+                if self._joint_raw_save_path is None:
+                    self._joint_raw_save_path = os.path.join(
+                        self._project_root(), "joint_rawdate",
+                        f"joint_angle_{self._session_timestamp}")
+                    os.makedirs(self._joint_raw_save_path, exist_ok=True)
+
+                filepath = os.path.join(
+                    self._joint_raw_save_path,
+                    f"{sanitize_filename(device_id)}.csv")
+                f = open(filepath, "w", newline="", encoding="utf-8")
+                writer = csv.writer(f)
+                writer.writerow(CSV_HEADER)
+                f.flush()
+                self._raw_writers[device_id] = {
+                    "file": f, "writer": writer, "rows": 0, "path": filepath,
+                }
+
+            entry = self._raw_writers[device_id]
+            entry["writer"].writerow(row[:len(CSV_HEADER)])
+            entry["rows"] += 1
+            self._raw_total_rows += 1
+            if entry["rows"] % 50 == 0:
+                entry["file"].flush()
+        except (OSError, csv.Error) as e:
+            self._raw_save_failed = True
+            print(f"[JOINT-THREAD] 原始数据保存失败: {type(e).__name__}: {e}")
+            self._close_raw_data()
+
+    def _close_raw_data(self):
+        """刷新并关闭所有关节测量原始数据文件。"""
+        for entry in self._raw_writers.values():
+            try:
+                entry["file"].flush()
+                entry["file"].close()
+            except OSError:
+                pass
+        self._raw_writers.clear()
 
     # ---- Calibration command (called via queue from UI) ----
     def start_calibration(self, calib_mode="lower_body_standing"):
@@ -525,6 +617,8 @@ class JointAngleThread(threading.Thread):
                 if len(row) < 16:
                     continue
                 device_id = row[0].strip()
+                if not device_id:
+                    continue
 
                 # 提取 esp32_rx_ms 和 IMU9 原始数据
                 # CSV 列: device_id(0), sensor_timestamp(1), sensor_ms(2), esp32_rx_ms(3),
@@ -557,8 +651,9 @@ class JointAngleThread(threading.Thread):
                     self._post("joint_status", state="device_detected",
                                message=f"检测到设备: {device_id} → {alias}",
                                device_id=device_id, alias=alias)
-                # 存储 (imu9, esp32_rx_ms) 元组，供近邻帧同步使用
-                self._device_bufs[device_id].append((imu9, esp32_rx_ms))
+                # 保留完整原始行；只有被同步匹配并用于输出角度的帧才会写盘。
+                self._device_bufs[device_id].append(
+                    (imu9, esp32_rx_ms, row[:len(CSV_HEADER)]))
                 self._last_frame_time[device_id] = time.time()
                 # 限制缓冲大小
                 if len(self._device_bufs[device_id]) > 500:
@@ -569,9 +664,17 @@ class JointAngleThread(threading.Thread):
 
                 # 如果已识别，执行角度计算（始终更新引擎，但仅标定后才发送曲线数据）
                 if self._prox_id and self._dist_id:
-                    imu_p, imu_d = self._get_engine_inputs()
+                    (imu_p, imu_d, pair_time_s, sync_dt_ms,
+                     raw_p, raw_d) = self._get_engine_inputs()
                     if imu_p is not None and imu_d is not None:
-                        engine.update(imu_p, imu_d)
+                        output_started = engine.has_calibration()
+                        engine.update(imu_p, imu_d, timestamp_s=pair_time_s)
+                        if output_started:
+                            # 每个角度样本仅写入对应的近端、远端同步原始帧。
+                            if raw_p is not None:
+                                self._record_raw_row(raw_p)
+                            if raw_d is not None:
+                                self._record_raw_row(raw_d)
                         state = engine.get_state()
                         calibrated = engine.has_calibration()
 
@@ -582,17 +685,17 @@ class JointAngleThread(threading.Thread):
                                 self._post("joint_status", state="waiting_calib",
                                            message="引擎已就绪，请保持静止站立后点击「开始校准」")
                         else:
-                            # 每 5 帧发一次（100Hz→约20Hz），大幅减少 queue 流量
+                            # 校准后的前 10 帧立即发送，让数值和曲线快速出现；
+                            # 稳定后每 5 帧发送一次（100Hz→约20Hz）。
                             frame_count = getattr(self, '_angle_frame_count', 0) + 1
                             self._angle_frame_count = frame_count
-                            if frame_count % 5 == 0:
-                                # 降采样: 100Hz 存储 → 每 5 帧取 1 (约20Hz)，取最近 1200 点 = 60 秒
-                                step = 5
+                            if frame_count <= 10 or frame_count % 5 == 0:
+                                step = 1 if frame_count <= 10 else 5
                                 t_raw = state.history_t
                                 f_raw = state.history_flexion
                                 a_raw = state.history_abduction
                                 r_raw = state.history_rotation
-                                n_ds = min(1200, len(t_raw) // step)
+                                start = max(0, len(t_raw) - 1200 * step)
                                 self._post("joint_angle",
                                            joint=self.joint_key,
                                            flexion_deg=round(state.flexion_deg, 2),
@@ -601,10 +704,11 @@ class JointAngleThread(threading.Thread):
                                            max_deg=round(state.max_flexion_deg, 2),
                                            min_deg=round(state.min_flexion_deg, 2),
                                            rom_deg=round(state.rom_deg, 2),
-                                           history_t=t_raw[-n_ds * step::step],
-                                           history_flexion=f_raw[-n_ds * step::step],
-                                           history_abduction=a_raw[-n_ds * step::step],
-                                           history_rotation=r_raw[-n_ds * step::step],
+                                           history_t=t_raw[start::step],
+                                           history_flexion=f_raw[start::step],
+                                           history_abduction=a_raw[start::step],
+                                           history_rotation=r_raw[start::step],
+                                           sync_dt_ms=round(sync_dt_ms, 1),
                                            initialized=engine.is_ready(),
                                            calibrated=True)
 
@@ -627,6 +731,16 @@ class JointAngleThread(threading.Thread):
                                 role = f"→{self.distal_alias}({self.distal_label})"
                             timeout_flag = " ⚠超时" if age_s > timeout_ms / 1000.0 else ""
                             dev_info.append(f"{did}({alias}){role} buf={buf_n} age={age_s:.1f}s{timeout_flag}")
+                        post_calib_matches = (
+                            self._sync_matched_count - self._calibrated_match_start
+                            if self._calibrated_wall_time else self._sync_matched_count)
+                        if post_calib_matches:
+                            avg_dt = self._sync_dt_sum_ms / self._sync_matched_count
+                            dev_info.append(
+                                f"同步: 校准后配对={post_calib_matches} "
+                                f"平均差={avg_dt:.1f}ms 最大差={self._sync_dt_max_ms:.1f}ms")
+                        elif self._calibrated_wall_time and now - self._calibrated_wall_time > 2.0:
+                            dev_info.append("⚠ 校准后没有同步帧，请检查两个传感器是否仍在发送")
                         self._post("joint_status", state="devices",
                                    message=" | ".join(dev_info))
                     else:
@@ -650,8 +764,12 @@ class JointAngleThread(threading.Thread):
                     try:
                         calib = online_calibrate_from_buffers(engine, calib_mode=mode)
                         save_calibration(calib, self.calib_dir)
-                        engine.load_calibration(calib)
                         self._calib = calib
+                        # 新零点生效后清除校准前角度/ROM，避免曲线出现旧值到 0° 的假跳变。
+                        engine.reset_state()
+                        self._angle_frame_count = 0
+                        self._calibrated_wall_time = time.time()
+                        self._calibrated_match_start = self._sync_matched_count
 
                         # 标定诊断：计算 q_rel_0 的欧拉角供用户验证传感器安装方向
                         from core.quaternion import quat_to_euler
@@ -708,8 +826,8 @@ class JointAngleThread(threading.Thread):
                 return None
 
             # 创建输出目录: joint_csv/joint_angle_YYYYMMDD_HHMMSS/
-            ts = _datetime.now().strftime("%Y%m%d_%H%M%S")
-            project_root = os.path.dirname(os.path.dirname(self.calib_dir))
+            ts = self._session_timestamp
+            project_root = self._project_root()
             session_dir = os.path.join(project_root, "joint_csv", f"joint_angle_{ts}")
             os.makedirs(session_dir, exist_ok=True)
 
@@ -737,7 +855,7 @@ class JointAngleThread(threading.Thread):
                 "distal_label": getattr(self, 'distal_label', self.distal_alias),
                 "proximal_device_id": self._prox_id or "",
                 "distal_device_id": self._dist_id or "",
-                "calibrated": engine.has_calibration(),
+                "calibrated": bool(engine.has_calibration()),
                 "calibration_mode": self._calib.calibration_mode if self._calib else "",
                 "sample_count": n,
                 "duration_s": round(state.history_t[-1] - state.history_t[0], 2) if n >= 2 else 0,
@@ -746,6 +864,15 @@ class JointAngleThread(threading.Thread):
                 "flexion_rom_deg": round(state.rom_deg, 2),
                 "flexion_max_deg": round(state.max_flexion_deg, 2),
                 "flexion_min_deg": round(state.min_flexion_deg, 2),
+                "sync_matched_count": self._sync_matched_count,
+                "sync_dropped_proximal": self._sync_drop_prox_count,
+                "sync_dropped_distal": self._sync_drop_dist_count,
+                "sync_avg_dt_ms": round(
+                    self._sync_dt_sum_ms / self._sync_matched_count, 3)
+                    if self._sync_matched_count else 0.0,
+                "sync_max_dt_ms": round(self._sync_dt_max_ms, 3),
+                "raw_data_dir": self._joint_raw_save_path or "",
+                "raw_sample_count": self._raw_total_rows,
             }
             json_path = os.path.join(session_dir, "session_info.json")
             with open(json_path, "w", encoding="utf-8") as f:
@@ -768,6 +895,10 @@ class JointAngleThread(threading.Thread):
                                 message=f"线程异常: {type(e).__name__}: {e}",
                                 traceback=traceback.format_exc())
         finally:
+            self._close_raw_data()
+            if self._joint_raw_save_path:
+                print(f"[JOINT-THREAD] 原始数据已保存: {self._joint_raw_save_path} "
+                      f"({self._raw_total_rows} 帧)")
             if self._ser:
                 try:
                     self._ser.close()

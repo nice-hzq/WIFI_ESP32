@@ -1262,6 +1262,22 @@ class GaitAnalysisApp:
         script_dir = get_base_dir()
         calib_dir = os.path.join(script_dir, "temp")
 
+        # 必须先明确映射近端/远端设备，不能按不可预测的上线顺序猜测。
+        self._load_joint_device_map()
+        self._update_joint_device_display()
+        prox_alias = info["proximal"]
+        dist_alias = info["distal"]
+        prox_ids = [did for did, alias in self._joint_device_map.items()
+                    if alias == prox_alias]
+        dist_ids = [did for did, alias in self._joint_device_map.items()
+                    if alias == dist_alias]
+        if len(prox_ids) != 1 or len(dist_ids) != 1 or prox_ids[0] == dist_ids[0]:
+            messagebox.showerror(
+                "设备映射不完整",
+                f"开始 {info['label']} 前，请在「配置设备映射」中分别指定且唯一指定\n"
+                f"{prox_alias}（{info['prox_label']}）和 {dist_alias}（{info['dist_label']}）。")
+            return
+
         self._transition_to(UIState.COLLECTING)
         self.joint_status_var.set(f"● 连接中... {port}")
         self.status_bar_var.set("关节角度测量启动中...")
@@ -1273,10 +1289,6 @@ class GaitAnalysisApp:
         self._update_joint_calib_status()
 
         self._clear_joint_tab()
-
-        # 加载设备映射并传给线程
-        self._load_joint_device_map()
-        self._update_joint_device_display()
 
         self.joint_thread = JointAngleThread(
             port, baud, joint_key, self.queue, calib_dir,
@@ -1420,8 +1432,10 @@ class GaitAnalysisApp:
         # Status update
         cal = "✓" if data.get("calibrated") else "✗"
         init = "✓" if data.get("initialized") else "⏳"
+        sync_dt = data.get("sync_dt_ms")
+        sync_text = f"  同步差:{sync_dt:.0f}ms" if sync_dt is not None else ""
         self.joint_status_var.set(f"● 测量中  |  校准:{cal}  初始化:{init}  "
-                                  f"|  屈伸:{flex:.1f}°  外展:{abd:.1f}°  旋转:{rot:.1f}°")
+                                  f"|  屈伸:{flex:.1f}°  外展:{abd:.1f}°  旋转:{rot:.1f}°{sync_text}")
 
     # ============================================================
     # Gait Analysis Actions
@@ -1584,6 +1598,7 @@ class GaitAnalysisApp:
 
                 elif mt == "joint_calib_done":
                     self._joint_calib_state = "calibrated"
+                    self._joint_reset_display()
                     self._update_joint_calib_status()
                     euler0 = msg.get("euler_rel_0", [0, 0, 0])
                     diag = (f"标定完成 ✓  |  Roll(屈伸)={euler0[0]:.1f}°  "
